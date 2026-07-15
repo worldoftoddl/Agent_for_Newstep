@@ -72,12 +72,34 @@
 
 ## Phase 4 — agent-chat-ui 연동
 
-- [ ] `ui/`에 braincrew-lab/agent-chat-ui 클론, `.env` 설정
-      (`NEXT_PUBLIC_API_URL=http://localhost:2024`, `NEXT_PUBLIC_ASSISTANT_ID`)
-- [ ] `public/chat-config.yaml`·`chat-openers.yaml` — 명칭·시작 문구 커스터마이징
-- [ ] 백엔드↔UI 엔드투엔드 확인 (스트리밍, 스레드 이어가기)
+> 그래프 무변경 원칙: UI는 LangGraph API 클라이언트일 뿐, Phase 1의
+> `create_agent` 그래프(assistant id `agent`)에 그대로 붙는다.
+
+### 4a — UI 단독 기동 (리스크 흡수)
+
+- [x] pnpm 설치 (corepack으로 활성화), Node v24 확인
+- [x] `ui/`에 braincrew-lab/agent-chat-ui 클론 — **벤더링 결정**
+      (`ui/.git` 제거 후 본 저장소에서 소스 직접 추적. 근거: 백로그 xlsx 업로드
+      포크 수정을 여기서 추적 + HF 배포 자체완결. upstream: `dfc5430`, 2025-11-13)
+- [x] `ui/.env` 설정 (`NEXT_PUBLIC_API_URL=http://localhost:2024`,
+      `NEXT_PUBLIC_ASSISTANT_ID=agent`) — 커밋 제외(ui/.gitignore)
+- [x] `pnpm dev` 단독 기동 — :3000 HTTP 200, StreamProvider가 env 정상 해석,
+      chat-openers 6건 로드 확인
+
+**완료 기준**: 브라우저에서 빈 채팅 화면이 뜬다 (백엔드 연결 전). → 충족
+
+### 4b — 백엔드 연결 엔드투엔드
+
+- [ ] `langgraph dev`(:2024) + UI 동시 기동, 조서 해석 대화 1건 완주
+- [ ] 스트리밍 표시·도구 호출(excel_*·standards_*) 렌더링·스레드 이어가기 확인
 
 **완료 기준**: 브라우저에서 조서 해석 대화가 처음부터 끝까지 동작.
+
+### 4c — 브랜딩·커스터마이징
+
+- [ ] `chat-config.yaml`·`chat-openers.yaml` — ExcelBrief 명칭·샘플 조서 안내 문구
+
+**완료 기준**: 첫 화면만 보고 방문자가 무엇을 물어볼지 알 수 있다.
 
 ## Phase 5 — 해석 품질·평가
 
