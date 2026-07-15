@@ -43,6 +43,26 @@
 
 **완료 기준**: pytest 전체 통과, 에이전트가 샘플 xlsx를 개요→정독 순서로 읽고 설명.
 
+## Phase 3.5 — Excel 도구 v2: 서식·의도 채널 (TDD)
+
+> 설계: [Tool design direction.md](Tool%20design%20direction.md) · Phase 4와 병행 가능,
+> **Phase 5(해석 품질 평가) 이전 완료 필수** — 채점 원재료(서식·메모)가 여기서 나옴.
+
+- [x] (선행) openpyxl phonetic 로드 버그 방어 패치 — 한공회 서식 실측으로 발견
+- [x] (선행) 테스트를 한공회 공식 조서 서식 기준으로 전환, 가상 샘플 삭제
+- [ ] read_range `mode="format"` (RED→GREEN) — 색상 3계열(rgb/theme/indexed) 분기,
+      프롬프트 탐색 원칙 1줄 추가
+- [ ] `excel_get_annotations` 신설 — 메모·숨김·데이터 유효성·정의된 이름
+      (실파일에 없는 요소는 데모용 심은 파일로 보강)
+- [ ] `excel_formula_map` 신설 — R1C1 패턴 압축 + 하드코딩 검출.
+      ⚠️ 참조 구현(xlsx_agent_tools.py)은 실재하지 않음 — 신규 구현
+- [ ] overview 블록 감지로 교체 (빈 행 경계 분할) + 도구 간 ref 인계 확인
+- [ ] 잔손질: 워크북 LRU 캐시·마크다운 파이프 이스케이프·find formulas 모드·
+      도구 출력 첫 줄 출처 규약
+
+**완료 기준**: "색으로 표시된 검토 항목"·"검토자 메모"·"이 시트의 검증 로직"
+3개 질문에 셀 주소 근거로 답변. 한공회 서식으로 엔드투엔드 확인.
+
 ## Phase 4 — agent-chat-ui 연동
 
 - [ ] `ui/`에 braincrew-lab/agent-chat-ui 클론, `.env` 설정

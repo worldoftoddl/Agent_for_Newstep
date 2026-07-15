@@ -4,13 +4,30 @@
 실패는 예외 대신 "오류: …" 텍스트로 반환해 에이전트가 자가 수정하게 한다.
 """
 
+import inspect as _inspect
 import os
 from pathlib import Path
 
+import openpyxl.worksheet.dimensions as _dims
 from langchain_core.tools import tool
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.cell import range_boundaries
+
+# ── openpyxl 호환 패치 ────────────────────────────────────────────────
+# 한공회 표준 서식 등 동아시아권 Excel의 열 속성(phonetic 등)이 openpyxl
+# 3.1.5의 ColumnDimension이 모르는 kwarg로 들어와 로드 자체가 죽는다
+# (실측: 감사조서서식_4000). 미지의 속성은 버리고 로드를 계속한다.
+_orig_coldim_init = _dims.ColumnDimension.__init__
+_COLDIM_PARAMS = set(_inspect.signature(_orig_coldim_init).parameters) - {"self"}
+
+
+def _coldim_init_ignoring_unknown(self, worksheet, **kw):
+    known = {k: v for k, v in kw.items() if k in _COLDIM_PARAMS}
+    _orig_coldim_init(self, worksheet, **known)
+
+
+_dims.ColumnDimension.__init__ = _coldim_init_ignoring_unknown
 
 MAX_CELLS = 500
 MAX_FIND_HITS = 50

@@ -1,4 +1,4 @@
-"""Phase 3 — Excel 탐색 도구 테스트 (TDD: 구현보다 먼저 작성)."""
+"""Excel 탐색 도구 테스트 — 한공회 공식 조서 서식(실파일) 기준."""
 
 import os
 
@@ -12,29 +12,36 @@ from agent.tools.excel import (
     list_workpapers,
 )
 
-WP = "조서_테스트.xlsx"
+WP_계약 = "감사조서서식_1100~1300 감사계약.xlsx"
+WP_3650 = "감사조서서식_3650 감사 전 재무제표 확인.xlsx"
+WP_4000 = "감사조서서식_4000 계정별 실증절차 (KIFRS용) 2025.xlsx"
 
 
 # ── list_workpapers ──────────────────────────────────────────
-def test_list_workpapers_lists_xlsx():
+def test_list_workpapers_lists_official_forms():
     out = list_workpapers.invoke({})
-    assert "조서_테스트.xlsx" in out
-    assert "범용_판매데이터.xlsx" in out
+    assert WP_계약 in out and WP_3650 in out and WP_4000 in out
 
 
 # ── excel_workbook_overview ──────────────────────────────────
-def test_overview_shows_sheets_headers_and_merges():
-    out = excel_workbook_overview.invoke({"path": WP})
-    for sheet in ("Lead", "명세", "빅시트"):
-        assert sheet in out
-    assert "매출채권 Lead Schedule" in out  # 첫 행 미리보기
-    assert "병합" in out                     # 병합 셀 정보
+def test_overview_shows_sheets_and_merges():
+    out = excel_workbook_overview.invoke({"path": WP_3650})
+    assert "3650" in out and "3650A 신규" in out
+    assert "49행 × 16열" in out
+    assert "병합" in out
+
+
+def test_overview_loads_phonetic_file():
+    """openpyxl phonetic 속성 회귀 테스트 — 패치 없이는 로드가 죽는 파일."""
+    out = excel_workbook_overview.invoke({"path": WP_4000})
+    assert "시트 36개" in out
+    assert "실증절차" in out
 
 
 def test_overview_missing_file_suggests_candidates():
     out = excel_workbook_overview.invoke({"path": "없는파일.xlsx"})
     assert "오류" in out
-    assert "조서_테스트.xlsx" in out  # 후보 목록 제시
+    assert WP_3650 in out  # 후보 목록 제시
 
 
 def test_overview_blocks_path_escape():
@@ -44,43 +51,53 @@ def test_overview_blocks_path_escape():
 
 # ── excel_read_range ─────────────────────────────────────────
 def test_read_range_values_as_markdown():
-    out = excel_read_range.invoke({"path": WP, "sheet": "Lead", "cell_range": "A3:C4"})
-    assert "계정과목" in out and "매출채권" in out and "1500" in out
+    out = excel_read_range.invoke(
+        {"path": WP_3650, "sheet": "3650", "cell_range": "A1:C3"}
+    )
+    assert "감사 전 재무제표 확인" in out
     assert "|" in out  # 마크다운 표
 
 
-def test_read_range_formulas_mode():
+def test_read_range_formulas_mode_shows_cross_sheet_refs():
     out = excel_read_range.invoke(
-        {"path": WP, "sheet": "Lead", "cell_range": "B6:C6", "mode": "formulas"}
+        {"path": WP_계약, "sheet": "1200", "cell_range": "A4:D5", "mode": "formulas"}
     )
-    assert "=SUM(B4:B5)" in out
+    assert "='1100'!B4" in out  # 시트 간 참조 수식
 
 
 def test_read_range_cell_cap_returns_guidance():
-    out = excel_read_range.invoke({"path": WP, "sheet": "빅시트", "cell_range": "A1:T30"})
+    # 3650A 신규: 113행 × 13열 = 1,469셀 > 500
+    out = excel_read_range.invoke(
+        {"path": WP_3650, "sheet": "3650A 신규", "cell_range": "A1:M113"}
+    )
     assert "500" in out and "나눠" in out  # 예외가 아니라 분할 안내
 
 
 def test_read_range_bad_sheet_is_error_text():
-    out = excel_read_range.invoke({"path": WP, "sheet": "없는시트", "cell_range": "A1:B2"})
+    out = excel_read_range.invoke(
+        {"path": WP_3650, "sheet": "없는시트", "cell_range": "A1:B2"}
+    )
     assert "오류" in out
 
 
 # ── excel_find ───────────────────────────────────────────────
 def test_find_locates_cell_across_sheets():
-    out = excel_find.invoke({"path": WP, "query": "한빛"})
-    assert "명세!A2" in out
+    out = excel_find.invoke({"path": WP_3650, "query": "감사 전 재무제표"})
+    assert "3650!A2" in out
 
 
 def test_find_scoped_to_sheet():
-    out = excel_find.invoke({"path": WP, "query": "매출채권", "sheet": "Lead"})
-    assert "Lead!A4" in out and "명세" not in out
+    out = excel_find.invoke(
+        {"path": WP_3650, "query": "감사 전 재무제표", "sheet": "3650"}
+    )
+    assert "3650!A2" in out
+    assert "3650A 신규!" not in out
 
 
 # ── excel_sheet_stats ────────────────────────────────────────
 def test_sheet_stats_counts_formulas():
-    out = excel_sheet_stats.invoke({"path": WP, "sheet": "Lead"})
-    assert "수식" in out and "2" in out  # =SUM 2개
+    out = excel_sheet_stats.invoke({"path": WP_계약, "sheet": "1200"})
+    assert "수식 셀: 3" in out  # ='1100'!… 3건
 
 
 # ── 에이전트 통합 (개요→정독 탐색 순서) ──────────────────────
@@ -94,7 +111,7 @@ async def test_agent_explores_overview_first():
             "messages": [
                 {
                     "role": "user",
-                    "content": "조서_테스트.xlsx가 어떤 조서인지 간단히 설명해줘.",
+                    "content": f"{WP_3650} 파일이 어떤 조서인지 간단히 설명해줘.",
                 }
             ]
         },
