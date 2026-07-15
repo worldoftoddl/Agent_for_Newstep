@@ -4,11 +4,11 @@
 
 ## Phase 0 — 프로젝트 초기화
 
-- [ ] `git init` + 첫 커밋 (계획 문서)
-- [ ] `pyproject.toml` 작성, 의존성 설치 (버전 잠금)
-- [ ] `.env` 정비 — LangSmith 변수명 현행화(`LANGSMITH_*`),
+- [x] `git init` + 첫 커밋 (계획 문서)
+- [x] `pyproject.toml` 작성, 의존성 설치 (버전 잠금 — `requirements.lock`)
+- [x] `.env` 정비 — LangSmith 변수명 현행화(`LANGSMITH_*`),
       `MCP_TRANSPORT`/`MCP_HTTP_URL`/`LOCAL_LLM_BASE_URL`/`WORKPAPERS_DIR` 추가
-- [ ] `data/workpapers/` 생성 + 테스트용 샘플 xlsx 1개 배치
+- [x] `data/workpapers/` 생성 + 가상 샘플 조서 배치 (`D-10_매출채권_샘플.xlsx`)
 
 **완료 기준**: `python -c "import langchain, langgraph"` 성공, git 이력 시작.
 
