@@ -244,8 +244,16 @@ README로 프로젝트 소개 완결 (PRD 성공 기준 5).
       일반 재시작으로 테스트 업로드 파일 제거. 참고: HF 프록시가 SSE 응답의
       content-type 헤더를 제거해 langgraph_sdk 스트리밍은 TransportError가 나지만
       curl/브라우저(fetch)는 정상 — SDK로 Space를 칠 때는 raw HTTP 사용
-- [ ] SpreadsheetLLM류 압축 인코딩 도구 (초대형 워크북)
+진행 순서 (2026-07-17 사용자 결정):
+① UI 마이그레이션(최우선 — 새 오픈소스 UI로 교체, 대상 리포는 착수 시 지정)
+→ ② read_table/query → ③ 그 효과를 본 뒤 압축 인코딩 필요성 재평가
+
+- [ ] **(최우선)** UI 마이그레이션 — agent-chat-ui(ui/ 벤더링)를 다른 오픈소스
+      UI로 교체. 유의: 커스텀 자산 이관 필요 — /api/upload·/api/models 라우트,
+      ModelSelector·문서 칩, chat-openers/설정 yaml, full-description,
+      langgraph passthrough(NEXT_PUBLIC_API_URL=/api), Dockerfile UI 빌드 스테이지
 - [ ] `read_table`/`query` — DataFrame 등록 + pandas 표현식 계산 위임
+- [ ] SpreadsheetLLM류 압축 인코딩 도구 (초대형 워크북) — ②의 효과 확인 후 재평가
       (참조 구현 보유. eval이 공개 Space에서 임의 코드 실행이 되므로 격리 설계 필요)
 - [x] 멀티 벤더 모델 선택 (2026-07-16) — LiteLLM 게이트웨이 대신 langchain
       `init_chat_model` 접두사 라우팅으로 구현 (별도 게이트웨이 프로세스 불필요)
