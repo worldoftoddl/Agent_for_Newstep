@@ -27,6 +27,25 @@ def test_resolve_model_local_routes_to_openai_compatible():
     assert "localhost" in str(model.openai_api_base)
 
 
+def test_resolve_model_openai(monkeypatch):
+    from langchain_openai import ChatOpenAI
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    model = resolve_model("openai:gpt-5.2")
+    assert isinstance(model, ChatOpenAI)
+    assert model.openai_api_base is None  # local:과 달리 공식 엔드포인트
+
+
+def test_resolve_model_google(monkeypatch):
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+    model = resolve_model("google_genai:gemini-flash-latest")
+    assert isinstance(model, ChatGoogleGenerativeAI)
+    # max_tokens 표준 파라미터가 벤더 명칭으로 매핑되는지 확인
+    assert model.max_output_tokens == 8192
+
+
 @pytest.mark.skipif(not os.environ.get("ANTHROPIC_API_KEY"), reason="API 키 없음")
 async def test_dummy_turn():
     g = await graph({"configurable": {}})

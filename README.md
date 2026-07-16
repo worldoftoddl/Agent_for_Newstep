@@ -30,12 +30,13 @@ flowchart LR
     BR["브라우저"] --> UI
     LG -- "HTTP MCP (Bearer)" --> MCP["auditpaper-mcp Space<br/>기준서 RAG (KSA·K-IFRS·실무지침)"]
     MCP --> QD["Qdrant Cloud<br/>(bge-m3 임베딩)"]
-    LG -- "anthropic: 라우트" --> AN["Claude API<br/>(프롬프트 캐싱)"]
-    LG -. "local: 라우트" .-> LO["vLLM / Ollama<br/>(OpenAI 호환)"]
+    LG -- "anthropic:/openai:/google_genai:" --> AN["Claude · GPT · Gemini<br/>(Claude는 프롬프트 캐싱)"]
+    LG -. "local: 라우트" .-> LO["Ollama qwen3:8b<br/>(OpenAI 호환)"]
 ```
 
-- **모델 라우팅**: 요청 config의 `model` 값으로 `anthropic:<id>`(기본) /
-  `local:<name>`(OpenAI 호환 로컬 서버) 분기
+- **모델 라우팅**: 요청 config의 `model` 값으로 벤더 분기 — `anthropic:<id>`(기본) /
+  `openai:<id>` / `google_genai:<id>` / `local:<name>`(Ollama 등 OpenAI 호환).
+  UI 드롭다운은 벤더 API 키가 설정된 모델만 노출(`/api/models`)
 - **인용 표기 계층**: MCP 도구 결과의 각 문단 cid(`KIFRS::1115::31`)에 코드가
   한국어 표기(display, "K-IFRS 제1115호 '…' 문단 31")를 주입 — 모델은 배치만 담당
 - **API passthrough**: 브라우저는 UI 도메인의 `/api`만 호출, Next 서버가
@@ -58,7 +59,7 @@ flowchart LR
 | 구분 | 사용 기술 |
 |---|---|
 | 에이전트 | Python 3.12, LangChain `create_agent`(ReAct), LangGraph 서버 |
-| LLM | Claude (프롬프트 캐싱, 실측 87% 캐시 히트) · 로컬 모델 라우트 |
+| LLM | 멀티 벤더 선택 — Claude(기본, 프롬프트 캐싱 실측 87% 히트) · GPT · Gemini · Ollama 로컬(qwen3:8b) |
 | 기준서 RAG | FastMCP HTTP 서버([auditPaper_MCP](https://github.com/worldoftoddl/auditPaper_MCP)) + Qdrant + bge-m3 |
 | 문서 파싱 | openpyxl(xlsx/xlsm)·xlrd(구형 xls)·python-docx(docx) — 값·수식·서식·메모·숨김·유효성 전 계층 판독 |
 | 파일 업로드 | Next.js `/api/upload` → 조서 폴더 저장, 채팅 첨부로 즉시 분석 (xlsx·xlsm·xls·docx, 20MB) |

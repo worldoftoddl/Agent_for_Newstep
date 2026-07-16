@@ -8,6 +8,7 @@ dependencies = [
     "langgraph",
     "langgraph-cli[inmem]",
     "langchain-anthropic",
+    "langchain-google-genai",
     "langchain-openai",
     "langchain-mcp-adapters",
     "openpyxl",

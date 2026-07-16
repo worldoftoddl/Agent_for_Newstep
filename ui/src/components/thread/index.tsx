@@ -49,6 +49,13 @@ import { useSettings } from "@/hooks/useSettings";
 import { FullDescriptionModal } from "./FullDescriptionModal";
 import { useAssistantConfig } from "@/hooks/useAssistantConfig";
 import { AssistantSelector } from "./AssistantSelector";
+import { ModelSelector } from "./ModelSelector";
+import {
+  DEFAULT_MODEL_SPEC,
+  MODEL_STORAGE_KEY,
+  fetchAvailableModels,
+  type ModelOption,
+} from "@/lib/models";
 import { ChatOpeners } from "./ChatOpeners";
 
 function StickyToBottomContent(props: {
@@ -149,6 +156,27 @@ export function Thread() {
   } = useFileUpload();
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
+
+  // 응답 모델 선택 — 목록은 벤더 API 키가 설정된 모델만 서버가 내려준다
+  const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
+  const [modelSpec, setModelSpec] = useState<string>(DEFAULT_MODEL_SPEC);
+  useEffect(() => {
+    fetchAvailableModels().then((models) => {
+      setAvailableModels(models);
+      if (models.length === 0) return;
+      const stored = window.localStorage.getItem(MODEL_STORAGE_KEY);
+      const valid = models.some((m) => m.spec === stored);
+      setModelSpec(valid && stored ? stored : models[0].spec);
+    });
+  }, []);
+  const handleModelSelect = (spec: string) => {
+    setModelSpec(spec);
+    try {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, spec);
+    } catch {
+      // no-op (사생활 보호 모드 등)
+    }
+  };
 
   const stream = useStreamContext();
   const messages = stream.messages;
@@ -283,6 +311,7 @@ export function Thread() {
     stream.submit(
       { messages: [...toolMessages, newHumanMessage], context },
       {
+        config: { configurable: { model: modelSpec } },
         streamMode: ["values"],
         streamSubgraphs: true,
         streamResumable: true,
@@ -311,6 +340,7 @@ export function Thread() {
     setFirstTokenReceived(false);
     stream.submit(undefined, {
       checkpoint: parentCheckpoint,
+      config: { configurable: { model: modelSpec } },
       streamMode: ["values"],
       streamSubgraphs: true,
       streamResumable: true,
@@ -692,6 +722,21 @@ export function Thread() {
                               </TooltipTrigger>
                               <TooltipContent side="top">
                                 <p>그래프 선택</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <ModelSelector
+                                  models={availableModels}
+                                  value={modelSpec}
+                                  onSelect={handleModelSelect}
+                                  disabled={isLoading}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                <p>응답 모델 선택</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>

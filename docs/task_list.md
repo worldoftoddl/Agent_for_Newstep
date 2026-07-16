@@ -247,6 +247,20 @@ README로 프로젝트 소개 완결 (PRD 성공 기준 5).
 - [ ] SpreadsheetLLM류 압축 인코딩 도구 (초대형 워크북)
 - [ ] `read_table`/`query` — DataFrame 등록 + pandas 표현식 계산 위임
       (참조 구현 보유. eval이 공개 Space에서 임의 코드 실행이 되므로 격리 설계 필요)
-- [ ] LiteLLM 게이트웨이 — 상용↔로컬 자동 폴백, 사용량 통제
-- [ ] 로컬 모델 확정 (vLLM vs Ollama, 모델 선정 벤치마크)
-- [ ] 다중 사용자 인증·조서 접근 권한
+- [x] 멀티 벤더 모델 선택 (2026-07-16) — LiteLLM 게이트웨이 대신 langchain
+      `init_chat_model` 접두사 라우팅으로 구현 (별도 게이트웨이 프로세스 불필요)
+    - 백엔드: resolve_model에 `openai:`·`google_genai:` 라우트 추가
+      (langchain-google-genai 의존성). GEMINI_API_KEY/GOOGLE_API_KEY 둘 다 인식
+    - UI: 모델 드롭다운(ModelSelector) + `/api/models`(벤더 API 키가 설정된
+      모델만 노출, 레지스트리는 ui/src/lib/models.ts) + 전송 시
+      `configurable.model` 주입, localStorage 유지
+    - 검증: GPT-5.1/GPT-5 mini/Gemini(-latest 별칭) 실호출 + list_workpapers
+      도구 호출 확인. Gemini 2.5는 지원 종료라 -latest 별칭 채택
+- [x] 로컬 모델 지원 (2026-07-16) — Ollama 채택. WSL2에 0.20.0이 systemd 서비스로
+      **이미 설치돼 있었음**(:11434, 재설치 불필요). qwen3:8b pull(도구 호출 지원,
+      RTX 3080 8GB 적재). 기존 `local:` 라우트(OpenAI 호환 :11434/v1) 그대로 사용
+    - 함정: Ollama 기본 num_ctx 4096 < 시스템 프롬프트+도구(4.2k 토큰) →
+      입력 절단으로 빈 응답. `PARAMETER num_ctx 16384` 파생 모델
+      **qwen3:8b-16k**를 만들어 해결 (레지스트리 spec도 이것)
+    - gemma3:4b도 있었으나 Ollama에서 도구 호출 미지원이라 배제
+- ~~다중 사용자 인증·조서 접근 권한~~ — 계획에서 삭제 (2026-07-16, 사용자 결정)
