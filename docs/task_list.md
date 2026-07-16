@@ -256,6 +256,9 @@ README로 프로젝트 소개 완결 (PRD 성공 기준 5).
       `configurable.model` 주입, localStorage 유지
     - 검증: GPT-5.1/GPT-5 mini/Gemini(-latest 별칭) 실호출 + list_workpapers
       도구 호출 확인. Gemini 2.5는 지원 종료라 -latest 별칭 채택
+    - Space 배포(커밋 00e8d8f): OPENAI_API_KEY·GEMINI_API_KEY를 Space 시크릿으로
+      추가(사용자 승인) → 드롭다운 6종 노출(Local은 의도대로 숨김), Gemini 실응답
+      확인. 방문자가 세 벤더 키의 사용량을 소비하므로 각 벤더 지출 한도 설정 권장
 - [x] 로컬 모델 지원 (2026-07-16) — Ollama 채택. WSL2에 0.20.0이 systemd 서비스로
       **이미 설치돼 있었음**(:11434, 재설치 불필요). qwen3:8b pull(도구 호출 지원,
       RTX 3080 8GB 적재). 기존 `local:` 라우트(OpenAI 호환 :11434/v1) 그대로 사용
