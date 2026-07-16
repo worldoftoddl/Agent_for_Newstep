@@ -207,6 +207,15 @@
       **visibility 운영**: 개발 중 private → 제출 기간 protected(PRO 전용,
       앱만 공개·소스 비공개·복제 불가) 또는 public → 종료 후 private 복귀.
       전환: `hf repos settings toddl/excelbrief --type space --protected`
+      - **Private 열람 시 흰 화면 이슈 (해결)**: hub 페이지 iframe의 인증
+        쿠키(`?__sign` JWT → hf.space 쿠키)가 서드파티 쿠키 차단에 걸려
+        JS/CSS가 비인증 404(HF 404 페이지 3KB)로 떨어짐. 브라우저 쿠키
+        예외(`huggingface.co`) 추가로 해결. **소유자가 private 상태로 볼
+        때만 발생** — protected/public 방문자는 인증 쿠키가 불필요해 무관.
+        진단법: 헤드리스 크로미움 + Bearer HF_TOKEN으로 직접 URL 렌더링
+        (앱 정상 확인) → 404 크기 3.1KB = 비인증 응답 대조
+      - **비용 통제(제출 전 필수)**: Anthropic Console 워크스페이스 지출
+        한도 설정 — protected여도 링크 소지자는 무제한 사용 가능하므로
 
 **완료 기준**: 링크 하나로 채용 담당자가 조서 해석 데모를 체험 가능,
 README로 프로젝트 소개 완결 (PRD 성공 기준 5).
