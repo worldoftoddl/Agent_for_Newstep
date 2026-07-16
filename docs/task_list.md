@@ -259,6 +259,12 @@ README로 프로젝트 소개 완결 (PRD 성공 기준 5).
     - Space 배포(커밋 00e8d8f): OPENAI_API_KEY·GEMINI_API_KEY를 Space 시크릿으로
       추가(사용자 승인) → 드롭다운 6종 노출(Local은 의도대로 숨김), Gemini 실응답
       확인. 방문자가 세 벤더 키의 사용량을 소비하므로 각 벤더 지출 한도 설정 권장
+    - 오픈모델 공개 데모(2026-07-16, 사용자 선택 "옵션 3"): GPU Space(t4-small
+      $0.40/h) 대신 **HF Inference Providers 라우터** 채택 — `hf:<org/model>`
+      라우트(router.huggingface.co/v1, OpenAI 호환). Qwen3.6-27B·gpt-oss-120b
+      도구 호출 검증 완료. ZeroGPU는 Gradio SDK 전용이라 Docker Space 불가(실측 조사)
+    - 함정: CLI용 HF_TOKEN(write)에는 Inference Providers 호출 권한이 없어 403 —
+      fine-grained **HF_INFERENCE_TOKEN**(Inference Providers 권한만) 별도 발급
 - [x] 로컬 모델 지원 (2026-07-16) — Ollama 채택. WSL2에 0.20.0이 systemd 서비스로
       **이미 설치돼 있었음**(:11434, 재설치 불필요). qwen3:8b pull(도구 호출 지원,
       RTX 3080 8GB 적재). 기존 `local:` 라우트(OpenAI 호환 :11434/v1) 그대로 사용

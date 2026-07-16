@@ -36,6 +36,15 @@ def test_resolve_model_openai(monkeypatch):
     assert model.openai_api_base is None  # local:과 달리 공식 엔드포인트
 
 
+def test_resolve_model_hf_router(monkeypatch):
+    from langchain_openai import ChatOpenAI
+
+    monkeypatch.setenv("HF_INFERENCE_TOKEN", "hf-test")
+    model = resolve_model("hf:Qwen/Qwen3.6-27B")
+    assert isinstance(model, ChatOpenAI)
+    assert "router.huggingface.co" in str(model.openai_api_base)
+
+
 def test_resolve_model_google(monkeypatch):
     from langchain_google_genai import ChatGoogleGenerativeAI
 

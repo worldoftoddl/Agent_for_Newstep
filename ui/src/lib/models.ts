@@ -54,6 +54,19 @@ export const MODEL_REGISTRY: RegisteredModel[] = [
     provider: "Google",
     envKeys: ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
   },
+  // HF Inference Providers 라우터 — 오픈모델 서버리스 (GPU Space 불필요)
+  {
+    spec: "hf:Qwen/Qwen3.6-27B",
+    label: "Qwen3.6 27B (오픈모델·HF)",
+    provider: "HuggingFace",
+    envKeys: ["HF_INFERENCE_TOKEN"],
+  },
+  {
+    spec: "hf:openai/gpt-oss-120b",
+    label: "gpt-oss 120B (오픈모델·HF)",
+    provider: "HuggingFace",
+    envKeys: ["HF_INFERENCE_TOKEN"],
+  },
   {
     spec: "local:qwen3:8b-16k",
     label: "Qwen3 8B (로컬 Ollama)",

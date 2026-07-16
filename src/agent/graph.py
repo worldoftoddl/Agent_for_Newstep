@@ -4,6 +4,8 @@
   - "anthropic:<model-id>"     → Anthropic API (기본, 프롬프트 캐싱)
   - "openai:<model-id>"        → OpenAI API
   - "google_genai:<model-id>"  → Google Gemini API
+  - "hf:<org/model>"           → HF Inference Providers 라우터 (오픈모델 서버리스,
+                                  OpenAI 호환, HF_TOKEN 인증 — GPU Space 불필요)
   - "local:<model-name>"       → OpenAI 호환 로컬 서버 (Ollama/vLLM)
 
 UI의 모델 드롭다운은 ui/src/lib/models.ts 레지스트리를 /api/models로 받아
@@ -39,6 +41,15 @@ def resolve_model(spec: str):
             f"openai:{spec.removeprefix('local:')}",
             base_url=os.environ.get("LOCAL_LLM_BASE_URL", "http://localhost:11434/v1"),
             api_key=os.environ.get("LOCAL_LLM_API_KEY", "not-needed"),
+            max_tokens=MAX_TOKENS,
+        )
+    if spec.startswith("hf:"):
+        # HF_INFERENCE_TOKEN: "Inference Providers 호출" 권한이 있는 fine-grained
+        # 토큰 (CLI용 write 토큰 HF_TOKEN에는 이 권한이 없음 — 403 실측)
+        return init_chat_model(
+            f"openai:{spec.removeprefix('hf:')}",
+            base_url="https://router.huggingface.co/v1",
+            api_key=os.environ.get("HF_INFERENCE_TOKEN") or os.environ.get("HF_TOKEN"),
             max_tokens=MAX_TOKENS,
         )
     if spec.startswith("anthropic:"):
