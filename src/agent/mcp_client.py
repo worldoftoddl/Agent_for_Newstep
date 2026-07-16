@@ -8,7 +8,10 @@
 import logging
 import os
 
+from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
+
+from agent.citations import attach_displays
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,30 @@ def _server_config() -> dict:
     }
 
 
+def _with_displays(tool) -> StructuredTool:
+    """도구 결과의 각 문단에 표기 문자열(display)을 덧붙이는 래퍼 (system_design 5.1)."""
+
+    async def _run(**kwargs):
+        result = await tool.ainvoke(kwargs)
+        if isinstance(result, str):
+            return attach_displays(result)
+        if isinstance(result, list):
+            return [
+                {**block, "text": attach_displays(block["text"])}
+                if isinstance(block, dict) and block.get("type") == "text"
+                else block
+                for block in result
+            ]
+        return result
+
+    return StructuredTool.from_function(
+        coroutine=_run,
+        name=tool.name,
+        description=tool.description,
+        args_schema=tool.args_schema,
+    )
+
+
 _tools_cache: list | None = None
 
 
@@ -49,7 +76,7 @@ async def get_standards_tools() -> list:
     if _tools_cache is None:
         try:
             client = MultiServerMCPClient({"auditpaper-standards": _server_config()})
-            _tools_cache = await client.get_tools()
+            _tools_cache = [_with_displays(t) for t in await client.get_tools()]
             logger.info("auditPaper_MCP 도구 %d종 연결", len(_tools_cache))
         except Exception:
             logger.exception("auditPaper_MCP 연결 실패 — 기준서 도구 없이 진행")
