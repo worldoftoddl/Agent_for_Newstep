@@ -1,0 +1,513 @@
+"use client";
+
+import { useState, useRef, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
+import {
+  LoaderCircle,
+  User,
+  Mail,
+  Lock,
+  KeyRound,
+  ArrowRight,
+  Ban,
+  Clock,
+  CheckCircle,
+} from "lucide-react";
+import { useAuthContext } from "../AuthLayoutClient";
+import { registerUser } from "@/app/actions/auth";
+import type { UserStatus } from "@/types/auth-mode";
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.04,
+      delayChildren: 0.02,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] as const },
+  },
+};
+
+export default function RegisterPage() {
+  const router = useRouter();
+  const { allowRegistration, branding } = useAuthContext();
+  const [isPending, startTransition] = useTransition();
+  const t = useTranslations("auth");
+  const tc = useTranslations("common");
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [registrationComplete, setRegistrationComplete] = useState(false);
+  const [registrationStatus, setRegistrationStatus] =
+    useState<UserStatus | null>(null);
+  const [registeredEmail, setRegisteredEmail] = useState("");
+
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  // Focus error message when error occurs
+  useEffect(() => {
+    if (error && errorRef.current) {
+      errorRef.current.focus();
+    }
+  }, [error]);
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (password.length < 8) {
+      errors.password = t("register.passwordMinLength");
+    }
+
+    if (password !== confirmPassword) {
+      errors.confirmPassword = t("register.passwordMismatch");
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setFieldErrors({});
+
+    if (!validateForm()) {
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await registerUser({ name, email, password });
+
+      if (!result.success) {
+        if (result.error.includes("already exists")) {
+          setError(t("register.emailExists"));
+        } else {
+          setError(result.error || t("register.genericError"));
+        }
+        return;
+      }
+
+      // Store registration result
+      setRegistrationStatus(result.data.status);
+      setRegisteredEmail(email);
+      setRegistrationComplete(true);
+    });
+  };
+
+  // If registration is disabled, show a message
+  if (!allowRegistration) {
+    return (
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-6"
+      >
+        <motion.div
+          variants={itemVariants}
+          className="flex flex-col items-center gap-4 pb-2"
+        >
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={branding.logoPath}
+              alt={`${branding.appName} ${tc("logo")}`}
+              width={branding.logoWidth * 2}
+              height={branding.logoHeight * 2}
+              className="flex-shrink-0"
+            />
+          </div>
+          <div className="space-y-1 text-center">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {branding.appName}
+            </h1>
+          </div>
+        </motion.div>
+
+        <motion.div
+          variants={itemVariants}
+          className="bg-muted/50 border-border flex flex-col items-center gap-4 rounded-xl border p-6"
+        >
+          <Ban className="text-muted-foreground h-12 w-12" />
+          <div className="space-y-2 text-center">
+            <h2 className="text-lg font-semibold">{t("register.disabled")}</h2>
+            <p className="text-muted-foreground text-sm">
+              {t("register.disabledDescription")}
+              <br />
+              {t("oauthLogin.contactAdmin")}
+            </p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          variants={itemVariants}
+          className="text-center text-sm"
+        >
+          <span className="text-muted-foreground">
+            {t("register.hasAccount")}{" "}
+          </span>
+          <Link
+            href="/login"
+            className="text-primary hover:text-primary/80 focus-visible:ring-primary rounded-sm font-medium transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            {t("login.signIn")}
+          </Link>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  // Show registration complete screen
+  if (registrationComplete) {
+    const isPendingApproval = registrationStatus === "pending";
+
+    return (
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-6"
+      >
+        <motion.div
+          variants={itemVariants}
+          className="flex flex-col items-center gap-4 pb-2"
+        >
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2 }}
+            className="bg-muted/70 border-border flex h-16 w-16 items-center justify-center rounded-full border"
+          >
+            {isPendingApproval ? (
+              <Clock className="text-primary h-8 w-8" />
+            ) : (
+              <CheckCircle className="text-primary h-8 w-8" />
+            )}
+          </motion.div>
+          <div className="space-y-1 text-center">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {isPendingApproval
+                ? t("register.requestComplete")
+                : t("register.complete")}
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              {isPendingApproval
+                ? t("register.pendingApprovalSubtitle")
+                : t("register.readySubtitle")}
+            </p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          variants={itemVariants}
+          className="text-muted-foreground text-center text-sm leading-relaxed"
+        >
+          {isPendingApproval ? (
+            <p className="whitespace-pre-line">
+              {t("register.pendingDescription")}
+            </p>
+          ) : (
+            <p className="whitespace-pre-line">
+              {t("register.completeDescription")}
+            </p>
+          )}
+          <p className="mt-4">
+            {t("register.registeredEmail")}{" "}
+            <span className="text-foreground font-medium">
+              {registeredEmail}
+            </span>
+          </p>
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          {isPendingApproval ? (
+            <Button
+              variant="outline"
+              className="h-11 w-full rounded-xl font-medium transition-colors"
+              onClick={() => router.push("/login")}
+            >
+              {t("register.goToLogin")}
+            </Button>
+          ) : (
+            <Button
+              className="h-11 w-full rounded-xl font-medium transition-colors"
+              onClick={() => router.push("/login")}
+            >
+              {t("register.signInNow")}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          )}
+        </motion.div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-6"
+    >
+      {/* Branding */}
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-col items-center gap-4 pb-2"
+      >
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={branding.logoPath}
+            alt={`${branding.appName} ${tc("logo")}`}
+            width={branding.logoWidth * 2}
+            height={branding.logoHeight * 2}
+            className="flex-shrink-0"
+          />
+        </div>
+        <div className="space-y-1 text-center">
+          <h1 className="text-2xl font-bold tracking-tight">
+            {branding.appName}
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            {t("register.subtitle")}
+          </p>
+        </div>
+      </motion.div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4"
+        noValidate
+      >
+        {/* General error message */}
+        {error && (
+          <motion.div
+            ref={errorRef}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="border-destructive/35 bg-destructive/10 text-destructive rounded-xl border p-3 text-sm"
+            role="alert"
+            aria-live="assertive"
+            tabIndex={-1}
+          >
+            {error}
+          </motion.div>
+        )}
+
+        <motion.div
+          variants={itemVariants}
+          className="space-y-2"
+        >
+          <label
+            htmlFor="name"
+            className="flex items-center gap-2 text-sm font-medium"
+          >
+            <User
+              className="text-muted-foreground h-4 w-4"
+              aria-hidden="true"
+            />
+            {t("register.name")}{" "}
+            <span className="text-muted-foreground font-normal">
+              {t("register.optional")}
+            </span>
+          </label>
+          <Input
+            id="name"
+            name="name"
+            type="text"
+            autoComplete="name"
+            placeholder={t("register.namePlaceholder")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={isPending}
+            size="lg"
+          />
+        </motion.div>
+
+        <motion.div
+          variants={itemVariants}
+          className="space-y-2"
+        >
+          <label
+            htmlFor="email"
+            className="flex items-center gap-2 text-sm font-medium"
+          >
+            <Mail
+              className="text-muted-foreground h-4 w-4"
+              aria-hidden="true"
+            />
+            {t("login.email")}
+          </label>
+          <Input
+            id="email"
+            name="email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            disabled={isPending}
+            spellCheck={false}
+            size="lg"
+          />
+        </motion.div>
+
+        <motion.div
+          variants={itemVariants}
+          className="space-y-2"
+        >
+          <label
+            htmlFor="password"
+            className="flex items-center gap-2 text-sm font-medium"
+          >
+            <Lock
+              className="text-muted-foreground h-4 w-4"
+              aria-hidden="true"
+            />
+            {t("login.password")}
+          </label>
+          <Input
+            id="password"
+            name="new-password"
+            type="password"
+            autoComplete="new-password"
+            placeholder={t("register.passwordPlaceholder")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={isPending}
+            aria-invalid={!!fieldErrors.password}
+            aria-describedby={
+              fieldErrors.password ? "password-error" : undefined
+            }
+            size="lg"
+          />
+          {fieldErrors.password && (
+            <motion.p
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              id="password-error"
+              className="text-destructive text-xs"
+            >
+              {fieldErrors.password}
+            </motion.p>
+          )}
+        </motion.div>
+
+        <motion.div
+          variants={itemVariants}
+          className="space-y-2"
+        >
+          <label
+            htmlFor="confirmPassword"
+            className="flex items-center gap-2 text-sm font-medium"
+          >
+            <KeyRound
+              className="text-muted-foreground h-4 w-4"
+              aria-hidden="true"
+            />
+            {t("register.confirmPassword")}
+          </label>
+          <Input
+            id="confirmPassword"
+            name="confirm-password"
+            type="password"
+            autoComplete="new-password"
+            placeholder={t("register.confirmPasswordPlaceholder")}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            disabled={isPending}
+            aria-invalid={!!fieldErrors.confirmPassword}
+            aria-describedby={
+              fieldErrors.confirmPassword ? "confirm-password-error" : undefined
+            }
+            size="lg"
+          />
+          {fieldErrors.confirmPassword && (
+            <motion.p
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              id="confirm-password-error"
+              className="text-destructive text-xs"
+            >
+              {fieldErrors.confirmPassword}
+            </motion.p>
+          )}
+        </motion.div>
+
+        <motion.div variants={itemVariants}>
+          <Button
+            type="submit"
+            className="h-11 w-full rounded-xl font-medium transition-colors"
+            disabled={isPending}
+          >
+            {isPending ? (
+              <>
+                <LoaderCircle
+                  className="mr-2 h-4 w-4 animate-spin"
+                  aria-hidden="true"
+                />
+                <span>{t("register.signingUp")}</span>
+              </>
+            ) : (
+              <>
+                <span>{t("register.signUp")}</span>
+                <ArrowRight
+                  className="ml-2 h-4 w-4"
+                  aria-hidden="true"
+                />
+              </>
+            )}
+          </Button>
+        </motion.div>
+      </form>
+
+      <motion.div
+        variants={itemVariants}
+        className="relative"
+      >
+        <div className="absolute inset-0 flex items-center">
+          <span className="border-border w-full border-t" />
+        </div>
+        <div className="relative flex justify-center text-xs">
+          <span className="bg-card text-muted-foreground px-3">{tc("or")}</span>
+        </div>
+      </motion.div>
+
+      <motion.div
+        variants={itemVariants}
+        className="text-center text-sm"
+      >
+        <span className="text-muted-foreground">
+          {t("register.hasAccount")}{" "}
+        </span>
+        <Link
+          href="/login"
+          className="text-primary hover:text-primary/80 focus-visible:ring-primary rounded-sm font-medium transition-colors hover:underline focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+        >
+          {t("login.signIn")}
+        </Link>
+      </motion.div>
+    </motion.div>
+  );
+}

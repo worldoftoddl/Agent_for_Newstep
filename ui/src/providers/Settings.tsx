@@ -2,9 +2,12 @@ import React, {
   createContext,
   useState,
   useEffect,
+  useCallback,
+  useMemo,
   ReactNode,
 } from "react";
-import { ChatConfig, defaultConfig, loadConfig } from "@/lib/config";
+import { ChatConfig, defaultConfig, loadConfig } from "@/lib/config/client";
+import { GlobalSettings, DEFAULT_SETTINGS } from "@/types/global-settings";
 
 // User settings that can be customized in the UI
 export interface UserSettings {
@@ -13,6 +16,8 @@ export interface UserSettings {
   colorScheme: "light" | "dark" | "auto";
   autoCollapseToolCalls: boolean;
   chatWidth: "default" | "wide";
+  chatHistoryOpen: boolean;
+  tracingPanelOpen: boolean;
 }
 
 export interface SettingsContextType {
@@ -20,6 +25,7 @@ export interface SettingsContextType {
   userSettings: UserSettings;
   updateUserSettings: (settings: Partial<UserSettings>) => void;
   resetUserSettings: () => void;
+  globalSettings: GlobalSettings;
 }
 
 export const SettingsContext = createContext<SettingsContextType | undefined>(
@@ -53,20 +59,27 @@ function saveUserSettings(settings: UserSettings) {
 interface SettingsProviderProps {
   children: ReactNode;
   initialConfig?: ChatConfig;
+  initialGlobalSettings?: GlobalSettings;
 }
 
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({
   children,
   initialConfig,
+  initialGlobalSettings,
 }) => {
   const initial = initialConfig ?? defaultConfig;
   const [config, setConfig] = useState<ChatConfig>(initial);
+  const [globalSettings] = useState<GlobalSettings>(
+    initialGlobalSettings ?? DEFAULT_SETTINGS,
+  );
   const [userSettings, setUserSettings] = useState<UserSettings>({
     fontFamily: initial.theme.fontFamily,
     fontSize: initial.theme.fontSize,
     colorScheme: initial.theme.colorScheme,
     autoCollapseToolCalls: initial.ui.autoCollapseToolCalls,
     chatWidth: initial.ui.chatWidth,
+    chatHistoryOpen: initial.ui.chatHistoryOpen,
+    tracingPanelOpen: initial.ui.tracingPanelOpen,
   });
 
   // Load config on mount
@@ -85,6 +98,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
       autoCollapseToolCalls:
         stored.autoCollapseToolCalls ?? initial.ui.autoCollapseToolCalls,
       chatWidth: stored.chatWidth || initial.ui.chatWidth,
+      chatHistoryOpen: stored.chatHistoryOpen ?? initial.ui.chatHistoryOpen,
+      tracingPanelOpen: stored.tracingPanelOpen ?? initial.ui.tracingPanelOpen,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -98,9 +113,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
       sans: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
       serif: "ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif",
       mono: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-      pretendard: "'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif",
+      pretendard:
+        "'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif",
     };
-    root.style.setProperty("--font-family", fontFamilyMap[userSettings.fontFamily]);
+    root.style.setProperty(
+      "--font-family",
+      fontFamilyMap[userSettings.fontFamily],
+    );
 
     // Apply font size
     const fontSizeMap = {
@@ -108,41 +127,75 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
       medium: "16px",
       large: "18px",
     };
-    root.style.setProperty("--base-font-size", fontSizeMap[userSettings.fontSize]);
+    root.style.setProperty(
+      "--base-font-size",
+      fontSizeMap[userSettings.fontSize],
+    );
 
     // Apply color scheme
+    const applyColorScheme = () => {
+      if (userSettings.colorScheme === "auto") {
+        const isDark = window.matchMedia(
+          "(prefers-color-scheme: dark)",
+        ).matches;
+        root.classList.toggle("dark", isDark);
+      } else {
+        root.classList.toggle("dark", userSettings.colorScheme === "dark");
+      }
+    };
+
+    applyColorScheme();
+
+    // Listen for system theme changes when in auto mode
     if (userSettings.colorScheme === "auto") {
-      const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      root.classList.toggle("dark", isDark);
-    } else {
-      root.classList.toggle("dark", userSettings.colorScheme === "dark");
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const handler = () => applyColorScheme();
+      mediaQuery.addEventListener("change", handler);
+      return () => mediaQuery.removeEventListener("change", handler);
     }
   }, [userSettings]);
 
-  const updateUserSettings = (settings: Partial<UserSettings>) => {
+  const updateUserSettings = useCallback((settings: Partial<UserSettings>) => {
     setUserSettings((prev) => {
       const newSettings = { ...prev, ...settings };
       saveUserSettings(newSettings);
       return newSettings;
     });
-  };
+  }, []);
 
-  const resetUserSettings = () => {
+  const resetUserSettings = useCallback(() => {
     const defaultUserSettings: UserSettings = {
       fontFamily: config.theme.fontFamily,
       fontSize: config.theme.fontSize,
       colorScheme: config.theme.colorScheme,
       autoCollapseToolCalls: config.ui.autoCollapseToolCalls,
       chatWidth: config.ui.chatWidth,
+      chatHistoryOpen: config.ui.chatHistoryOpen,
+      tracingPanelOpen: config.ui.tracingPanelOpen,
     };
     setUserSettings(defaultUserSettings);
     saveUserSettings(defaultUserSettings);
-  };
+  }, [config]);
+
+  const contextValue = useMemo(
+    () => ({
+      config,
+      userSettings,
+      updateUserSettings,
+      resetUserSettings,
+      globalSettings,
+    }),
+    [
+      config,
+      userSettings,
+      updateUserSettings,
+      resetUserSettings,
+      globalSettings,
+    ],
+  );
 
   return (
-    <SettingsContext.Provider
-      value={{ config, userSettings, updateUserSettings, resetUserSettings }}
-    >
+    <SettingsContext.Provider value={contextValue}>
       {children}
     </SettingsContext.Provider>
   );

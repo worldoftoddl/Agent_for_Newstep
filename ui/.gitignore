@@ -26,6 +26,16 @@ dist-ssr
 # LangGraph API
 .langgraph_api
 .env
+.env.production
+.env.local
 .next/
 next-env.d.ts
-*.tsbuildinfo
+
+tsconfig.tsbuildinfo
+
+# Database
+*.db
+*.db-journal
+
+# Uploaded files
+public/uploads/

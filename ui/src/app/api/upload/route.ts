@@ -1,90 +1,135 @@
-import { mkdir, writeFile } from "fs/promises";
-import { existsSync } from "fs";
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { usesNextAuth } from "@/types/auth-mode";
+import { getSetting } from "@/lib/services/settings.service";
+import { writeFile, mkdir, access, constants } from "fs/promises";
 import path from "path";
 
-// langgraph 서버와 같은 파일시스템을 공유하므로(단일 컨테이너/로컬 동일 리포)
-// WORKPAPERS_DIR에 저장하면 에이전트의 list_workpapers·excel_*·read_document가
-// 즉시 읽을 수 있다. 이 정적 라우트는 catch-all([..._path]) 프록시보다 우선 매칭된다.
-export const runtime = "nodejs";
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/json",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
 
-const ALLOWED_EXTENSIONS = new Set([".xlsx", ".xlsm", ".xls", ".docx"]);
-const MAX_BYTES = 20 * 1024 * 1024; // 20MB
+const MAX_FILE_SIZE =
+  (parseInt(process.env.MAX_UPLOAD_SIZE_MB || "10", 10) || 10) * 1024 * 1024;
 
-function workpapersDir(): string {
-  // 컨테이너에서는 ENV로 주입, 로컬 dev(cwd=ui/)에서는 리포의 data/workpapers
-  return (
-    process.env.WORKPAPERS_DIR ??
-    path.resolve(process.cwd(), "..", "data", "workpapers")
-  );
-}
-
-function sanitizeBaseName(name: string): string {
-  // 경로 구분자·제어문자만 치환하고 한글 등 유니코드 파일명은 보존한다
-  return path
-    .basename(name)
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
-    .trim();
-}
-
-function uniqueName(dir: string, base: string): string {
-  const ext = path.extname(base);
-  const stem = base.slice(0, base.length - ext.length);
-  let candidate = base;
-  // 기존 파일(데모 조서 포함)을 방문자 업로드가 덮어쓰지 않도록 접미사를 붙인다
-  for (let i = 1; existsSync(path.join(dir, candidate)); i += 1) {
-    candidate = `${stem} (${i})${ext}`;
+function getUploadDir(): string {
+  if (process.env.UPLOAD_DIR) {
+    return path.join(process.env.UPLOAD_DIR, "user");
   }
-  return candidate;
+  return path.join(process.cwd(), "public", "uploads", "user");
 }
 
-export async function POST(req: Request): Promise<Response> {
-  let form: FormData;
+async function ensureDir(dir: string): Promise<void> {
   try {
-    form = await req.formData();
+    await access(dir, constants.W_OK);
   } catch {
-    return Response.json(
-      { error: "multipart/form-data 요청이 아닙니다." },
-      { status: 400 },
-    );
-  }
-
-  const file = form.get("file");
-  if (!(file instanceof File)) {
-    return Response.json(
-      { error: "file 필드에 파일이 없습니다." },
-      { status: 400 },
-    );
-  }
-
-  const ext = path.extname(file.name).toLowerCase();
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    return Response.json(
-      { error: `지원하지 않는 형식입니다 (${ext || "확장자 없음"}). xlsx, xlsm, xls, docx만 업로드할 수 있습니다.` },
-      { status: 400 },
-    );
-  }
-  if (file.size > MAX_BYTES) {
-    return Response.json(
-      { error: `파일이 너무 큽니다 (${(file.size / 1024 / 1024).toFixed(1)}MB). 최대 20MB까지 업로드할 수 있습니다.` },
-      { status: 413 },
-    );
-  }
-
-  const dir = workpapersDir();
-  try {
     await mkdir(dir, { recursive: true });
-    const base = sanitizeBaseName(file.name) || `업로드${ext}`;
-    const savedAs = uniqueName(dir, base);
-    await writeFile(
-      path.join(dir, savedAs),
-      Buffer.from(await file.arrayBuffer()),
-    );
-    return Response.json({ filename: savedAs });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "unknown";
-    return Response.json(
-      { error: `파일 저장에 실패했습니다: ${message}` },
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    // Only check NextAuth session for NextAuth modes
+    // custom-jwt and api-key: auth handled at proxy/middleware level
+    // standalone and oauth-direct: no auth required
+    if (usesNextAuth()) {
+      const session = await auth();
+      if (!session?.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+
+    // Check if file upload is enabled in global settings
+    const fileUploadEnabled = await getSetting("features.enableFileUpload");
+    if (fileUploadEnabled === false) {
+      return NextResponse.json(
+        { error: "File upload is disabled" },
+        { status: 403 },
+      );
+    }
+
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+
+    if (!file) {
+      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: `Unsupported file type: ${file.type}` },
+        { status: 400 },
+      );
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        {
+          error: `File too large. Maximum size is ${MAX_FILE_SIZE / (1024 * 1024)}MB`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const uploadDir = getUploadDir();
+
+    try {
+      await ensureDir(uploadDir);
+    } catch (dirError) {
+      console.error("Failed to create upload directory:", dirError);
+      return NextResponse.json(
+        { error: "Upload directory is not writable." },
+        { status: 500 },
+      );
+    }
+
+    const ext = getExtensionFromMimeType(file.type);
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 8);
+    const filename = `${timestamp}-${randomStr}${ext}`;
+    const filepath = path.join(uploadDir, filename);
+
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    await writeFile(filepath, buffer);
+
+    const url = `/api/upload/${filename}`;
+
+    return NextResponse.json({ url, filename });
+  } catch (error) {
+    console.error("Upload error:", error);
+    return NextResponse.json(
+      {
+        error: `Failed to upload file: ${error instanceof Error ? error.message : "Unknown error"}`,
+      },
       { status: 500 },
     );
   }
+}
+
+function getExtensionFromMimeType(mimeType: string): string {
+  const map: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "text/csv": ".csv",
+    "application/json": ".json",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+      ".docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      ".xlsx",
+  };
+  return map[mimeType] || ".bin";
 }
