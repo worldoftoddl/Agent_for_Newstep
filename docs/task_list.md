@@ -197,9 +197,16 @@
         업로드, 시크릿(ANTHROPIC_API_KEY·MCP_AUTH_TOKEN·LANGSMITH_API_KEY) 설정
 - [x] 포트폴리오용 README.md (아키텍처 mermaid·평가 결과·기술 스택·로컬 실행법)
       + `.env.example` 신설
-- [ ] 공개 URL 엔드투엔드 검증 — **사용자 액션 필요**: HF 웹에서 Space 생성
-      (제안명 toddl/excelbrief), deploy/hf_space/ 두 파일 업로드, 시크릿 설정.
-      빌드 완료 후 대화 검증. README의 데모 링크가 실제 Space URL과 다르면 수정
+- [x] 공개 URL 엔드투엔드 검증 — hf CLI(HF_TOKEN, .env)로 전 과정 자동화:
+      `toddl/excelbrief` **Private** Space 생성, deploy/hf_space 2파일 업로드,
+      시크릿 3종+LANGSMITH_TRACING 설정, 빌드(RUNNING) 확인
+      - start.sh 실측: langgraph 서버 5초 준비 → Next.js :7860 기동
+      - Private 상태 검증(Bearer HF_TOKEN): /api/info 중계 200, UI 루트 200,
+        기준서 RAG 대화(KSA::505::7 원문 확인·cid 반환), 조서 8건 목록 정상
+      - README 데모 링크(toddl/excelbrief)와 실제 URL 일치 — 수정 불요
+      **visibility 운영**: 개발 중 private → 제출 기간 protected(PRO 전용,
+      앱만 공개·소스 비공개·복제 불가) 또는 public → 종료 후 private 복귀.
+      전환: `hf repos settings toddl/excelbrief --type space --protected`
 
 **완료 기준**: 링크 하나로 채용 담당자가 조서 해석 데모를 체험 가능,
 README로 프로젝트 소개 완결 (PRD 성공 기준 5).
