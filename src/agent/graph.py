@@ -33,7 +33,15 @@ def resolve_model(spec: str):
     # 다음 턴 재전송에서 400(thinking.thinking Field required)이 나는 문제 회피 —
     # 표준 콘텐츠 블록으로 왕복 직렬화한다.
     # max_tokens: 기본 4096이면 조서 해설이 근거 목록 전에 절단됨 (Phase 5 채점에서 실증).
-    return init_chat_model(spec, output_version="v1", max_tokens=8192)
+    # cache_control: 요청 최상위 파라미터로 자동 프롬프트 캐싱 활성화 —
+    # 시스템 프롬프트+도구 정의(~5.7k 토큰)가 ReAct 라운드마다 전액 재과금되던
+    # 것을 캐시 (LangSmith 실측: 전 호출 cache_read=0이었음).
+    return init_chat_model(
+        spec,
+        output_version="v1",
+        max_tokens=8192,
+        model_kwargs={"cache_control": {"type": "ephemeral"}},
+    )
 
 
 async def graph(config: RunnableConfig):
