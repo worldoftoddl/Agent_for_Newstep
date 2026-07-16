@@ -179,12 +179,23 @@
         데모_부서별 예산집행 현황(범용)
       - openpyxl은 수식 캐시 값을 못 쓰므로 저장 후 sheet XML의 <v>에 계산값
         주입(openpyxl이 미리 쓴 빈 <v/> 재사용) — 값 모드 판독 실측 확인
-- [ ] backend Space — Dockerfile 작성, langgraph 서버 :7860 기동,
-      시크릿(ANTHROPIC_API_KEY·MCP_AUTH_TOKEN·LANGSMITH_API_KEY) 설정
-- [ ] UI Space — agent-chat-ui Docker 배포, backend URL 연결
-      (또는 단일 Space + API passthrough로 택1 — 실측 후 결정)
-- [ ] 공개 URL 엔드투엔드 검증 + 포트폴리오용 README
-      (데모 링크·아키텍처 다이어그램·사용법·기술 스택)
+- [x] 배포 구조 확정: **단일 Space + API passthrough** (로컬 검증 완료 방식 재사용)
+      - 루트 `Dockerfile`: 2-스테이지 — node로 UI standalone 빌드 →
+        python:3.12-slim 런타임에 node 바이너리만 복사, `start.sh`가
+        langgraph 서버(:2024) 준비 대기 후 UI(:7860) 기동
+      - `NEXT_PUBLIC_API_URL=/api` 상대 경로 빌드 — normalizeApiUrl이
+        window.location.origin과 결합해 어떤 도메인에서든 동작 (실측 확인)
+      - 로컬 검증: standalone server.js에 LANGGRAPH_API_URL 런타임 주입 →
+        /api/info·/api/assistants/search 중계 확인 (Docker는 WSL에 없어
+        이미지 빌드 자체는 HF 빌더에서 검증)
+      - `deploy/hf_space/{README.md,Dockerfile}`: auditPaper_MCP와 동일한
+        "Space가 GitHub 리포를 clone" 패턴 — 웹 UI로 Space 생성 후 두 파일만
+        업로드, 시크릿(ANTHROPIC_API_KEY·MCP_AUTH_TOKEN·LANGSMITH_API_KEY) 설정
+- [x] 포트폴리오용 README.md (아키텍처 mermaid·평가 결과·기술 스택·로컬 실행법)
+      + `.env.example` 신설
+- [ ] 공개 URL 엔드투엔드 검증 — **사용자 액션 필요**: HF 웹에서 Space 생성
+      (제안명 toddl/excelbrief), deploy/hf_space/ 두 파일 업로드, 시크릿 설정.
+      빌드 완료 후 대화 검증. README의 데모 링크가 실제 Space URL과 다르면 수정
 
 **완료 기준**: 링크 하나로 채용 담당자가 조서 해석 데모를 체험 가능,
 README로 프로젝트 소개 완결 (PRD 성공 기준 5).
