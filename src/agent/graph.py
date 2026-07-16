@@ -32,7 +32,8 @@ def resolve_model(spec: str):
     # output_version="v1": 스트리밍 병합 시 thinking 블록이 signature만 남아
     # 다음 턴 재전송에서 400(thinking.thinking Field required)이 나는 문제 회피 —
     # 표준 콘텐츠 블록으로 왕복 직렬화한다.
-    return init_chat_model(spec, output_version="v1")
+    # max_tokens: 기본 4096이면 조서 해설이 근거 목록 전에 절단됨 (Phase 5 채점에서 실증).
+    return init_chat_model(spec, output_version="v1", max_tokens=8192)
 
 
 async def graph(config: RunnableConfig):
