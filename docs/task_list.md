@@ -170,8 +170,15 @@
 
 ## Phase 6 — HuggingFace Spaces 배포
 
-- [ ] 가상 샘플 조서 2~3건 제작 (실데이터 미사용, 데모 시나리오 커버:
+- [x] 가상 샘플 조서 3건 제작 (실데이터 미사용, 데모 시나리오 커버:
       완성 조서 / 미완성 조서 / 범용 Excel)
+      - `scripts/make_demo_workpapers.py` → data/workpapers/에 생성:
+        데모조서_5300 현금및현금성자산(완성 — 틱마크·범례·검토서명·tie-out·
+        KSA 330/505·K-IFRS 1007 참조), 데모조서_5400 매출채권 작성중(미완성 —
+        조회 미회신 5건·대손충당금 시트 공란·검토란 공란·KSA 505/K-IFRS 1109),
+        데모_부서별 예산집행 현황(범용)
+      - openpyxl은 수식 캐시 값을 못 쓰므로 저장 후 sheet XML의 <v>에 계산값
+        주입(openpyxl이 미리 쓴 빈 <v/> 재사용) — 값 모드 판독 실측 확인
 - [ ] backend Space — Dockerfile 작성, langgraph 서버 :7860 기동,
       시크릿(ANTHROPIC_API_KEY·MCP_AUTH_TOKEN·LANGSMITH_API_KEY) 설정
 - [ ] UI Space — agent-chat-ui Docker 배포, backend URL 연결
