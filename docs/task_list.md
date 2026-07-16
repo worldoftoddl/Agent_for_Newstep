@@ -105,9 +105,15 @@
 
 ### 4c — 브랜딩·커스터마이징
 
-- [ ] `chat-config.yaml`·`chat-openers.yaml` — ExcelBrief 명칭·샘플 조서 안내 문구
+- [x] `settings.yaml`(우선 로드)·`chat-config.yaml` — 앱 이름 "ExcelBrief for Newsteps",
+      소개 문구·입력창 placeholder 교체
+- [x] `chat-openers.yaml` — 배치된 한공회 조서 5종 기준 예시 질문 6건
+- [x] `full-description.md` — 기능 3종·조서 목록·인용 규칙·데모 주의 문구로 전면 교체
+- [x] `layout.tsx` — 하드코딩된 탭 타이틀/메타 교체 (tsc·eslint 통과)
 
 **완료 기준**: 첫 화면만 보고 방문자가 무엇을 물어볼지 알 수 있다.
+→ 충족: :3000에서 settings/openers(6건)/타이틀 서빙 확인. 브라우저 육안 확인은
+4b와 함께 1회로 갈음 (사용자 확인 대기).
 
 ## Phase 5 — 해석 품질·평가
 

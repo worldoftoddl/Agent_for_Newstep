@@ -4,7 +4,7 @@
 # Application branding
 branding:
   # Application name displayed in the UI
-  appName: "Agent Chat"
+  appName: "ExcelBrief for Newsteps"
   # Logo file path (relative to public directory)
   logoPath: "/logo.png"
   # Logo dimensions
