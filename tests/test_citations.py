@@ -5,7 +5,11 @@
 
 import json
 
+from langchain_core.tools import StructuredTool
+from pydantic import BaseModel
+
 from agent.citations import attach_displays, make_display
+from agent.mcp_client import _with_displays
 
 
 def _item(cid: str, title: str | None = None) -> dict:
@@ -112,3 +116,48 @@ class TestAttachDisplays:
     def test_오류_봉투는_변형_없이_통과(self):
         payload = json.dumps({"error": {"code": "UPSTREAM_UNAVAILABLE", "hint": "..."}})
         assert json.loads(attach_displays(payload)) == json.loads(payload)
+
+
+class _Args(BaseModel):
+    query: str
+
+
+def _fake_mcp_tool(payload: str) -> StructuredTool:
+    """MCP 어댑터와 동일 형태의 도구 — content_and_artifact 튜플 반환."""
+
+    async def call_tool(query: str):
+        return [{"type": "text", "text": payload}], {"원본": True}
+
+    return StructuredTool(
+        name="standards_search",
+        description="테스트용",
+        args_schema=_Args,
+        coroutine=call_tool,
+        response_format="content_and_artifact",
+    )
+
+
+class TestWithDisplaysWrapper:
+    """래퍼는 원본 coroutine을 직접 호출한다 — 중첩 tool run(이중 트레이싱) 금지."""
+
+    payload = json.dumps(
+        {"results": [{"cid": "KSA::315::A12", "standard_no": "315", "para_no": "A12"}]},
+        ensure_ascii=False,
+    )
+
+    async def test_display_주입과_artifact_보존(self):
+        wrapped = _with_displays(_fake_mcp_tool(self.payload))
+        content, artifact = await wrapped.coroutine(query="x")
+        out = json.loads(content[0]["text"])
+        assert out["results"][0]["display"] == "감사기준서 315 문단 A12(적용자료)"
+        assert artifact == {"원본": True}
+
+    async def test_response_format_승계(self):
+        wrapped = _with_displays(_fake_mcp_tool(self.payload))
+        assert wrapped.response_format == "content_and_artifact"
+
+    async def test_ainvoke_경로도_동작(self):
+        wrapped = _with_displays(_fake_mcp_tool(self.payload))
+        result = await wrapped.ainvoke({"query": "x"})
+        out = json.loads(result[0]["text"])
+        assert out["results"][0]["display"] == "감사기준서 315 문단 A12(적용자료)"

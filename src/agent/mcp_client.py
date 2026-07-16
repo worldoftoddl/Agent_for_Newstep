@@ -39,27 +39,41 @@ def _server_config() -> dict:
     }
 
 
+def _process_content(content):
+    """도구 결과 콘텐츠(문자열 또는 블록 리스트)에 display를 주입한다."""
+    if isinstance(content, str):
+        return attach_displays(content)
+    if isinstance(content, list):
+        return [
+            {**block, "text": attach_displays(block["text"])}
+            if isinstance(block, dict) and block.get("type") == "text"
+            else block
+            for block in content
+        ]
+    return content
+
+
 def _with_displays(tool) -> StructuredTool:
-    """도구 결과의 각 문단에 표기 문자열(display)을 덧붙이는 래퍼 (system_design 5.1)."""
+    """도구 결과의 각 문단에 표기 문자열(display)을 덧붙이는 래퍼 (system_design 5.1).
+
+    원본 도구의 coroutine을 직접 호출한다 — tool.ainvoke를 거치면 래퍼와 원본이
+    각각 tool run으로 기록되어 LangSmith 트레이스가 이중으로 남는다.
+    MCP 어댑터 도구는 content_and_artifact 규약이라 (content, artifact) 튜플을 다룬다.
+    """
 
     async def _run(**kwargs):
-        result = await tool.ainvoke(kwargs)
-        if isinstance(result, str):
-            return attach_displays(result)
-        if isinstance(result, list):
-            return [
-                {**block, "text": attach_displays(block["text"])}
-                if isinstance(block, dict) and block.get("type") == "text"
-                else block
-                for block in result
-            ]
-        return result
+        result = await tool.coroutine(**kwargs)
+        if isinstance(result, tuple) and len(result) == 2:
+            content, artifact = result
+            return _process_content(content), artifact
+        return _process_content(result)
 
     return StructuredTool.from_function(
         coroutine=_run,
         name=tool.name,
         description=tool.description,
         args_schema=tool.args_schema,
+        response_format=tool.response_format,
     )
 
 
