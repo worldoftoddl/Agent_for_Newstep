@@ -248,10 +248,30 @@ README로 프로젝트 소개 완결 (PRD 성공 기준 5).
 ① UI 마이그레이션(최우선 — 새 오픈소스 UI로 교체, 대상 리포는 착수 시 지정)
 → ② read_table/query → ③ 그 효과를 본 뒤 압축 인코딩 필요성 재평가
 
-- [ ] **(최우선)** UI 마이그레이션 — agent-chat-ui(ui/ 벤더링)를 다른 오픈소스
-      UI로 교체. 유의: 커스텀 자산 이관 필요 — /api/upload·/api/models 라우트,
-      ModelSelector·문서 칩, chat-openers/설정 yaml, full-description,
-      langgraph passthrough(NEXT_PUBLIC_API_URL=/api), Dockerfile UI 빌드 스테이지
+- [x] UI 마이그레이션 (2026-07-17) — ui/를
+      [langgraph-chat-ui](https://github.com/braincrew-lab/langgraph-chat-ui)
+      (teddynote-lab 계열, agent-chat-ui의 확장판) frontend로 통째 교체.
+      standalone 인증 모드(DB·NextAuth 미사용), ko 로케일. 얻은 것: 스레드
+      사이드바(저장·이름변경·삭제)·툴 호출 시각화·서브그래프 노드 추적·다크 테마
+    - Phase 1(a273f85): 벤더링 교체 + passthrough 확인(클라이언트가 항상
+      origin+/api 호출, 서버가 LANGGRAPH_API_URL로 중계 — 기존 구조와 동일)
+    - Phase 2(8bc7d36·cbd0b93): 커스텀 자산 이식 — /api/models+ModelSelector
+      (submit 시 localStorage에서 읽어 config 주입, useMessageSubmit 6지점+
+      human.tsx 편집 재전송), 조서 업로드는 **/api/workpapers**로 개명
+      (벤더의 /api/upload은 스키마 폼 URL 모드용이라 분리), 문서 칩·[첨부 파일:] 규약
+    - Phase 3(26a7b42): 브랜딩은 site.ts 하나가 아니라 **DEFAULT_SETTINGS
+      (types/global-settings.ts)와 i18n defaults(ko/en.json)가 폴백 체인으로
+      덮는다** — 3곳 모두 교체해야 적용(실측). 예시 질문은 WelcomeScreen에
+      CHAT_STARTERS 버튼으로, full-description.md는 사용 안내 다이얼로그로 이식
+    - Phase 4(71b06d3): Dockerfile — pnpm install --ignore-scripts 후 전체 COPY,
+      pnpm build가 prisma generate 포함(standalone 모드는 런타임에 Prisma 미사용,
+      빌드 타입용으로만 필요). openssl 설치. AUTH_MODE 등 빌드·런타임 양쪽 주입
+    - 함정: features/chat/components/index.tsx(Thread)는 **미사용 죽은 코드** —
+      실제 트리는 ChatContent→ThreadContent→useMessageSubmit. 배선은 후자에
+    - 함정: Space는 deploy/hf_space/Dockerfile의 **Space 리포 사본**으로 빌드 —
+      GitHub만 갱신하면 BUILD_ERROR. hf upload로 Space에도 올려야 반영
+- [ ] 미이식(필요 시): 구 UI의 설정 yaml 3종은 site.ts/DEFAULT_SETTINGS로 대체됨.
+      스타터 클릭은 입력창 채움 방식(구 UI는 즉시 전송이었는지 미확인)
 - [ ] `read_table`/`query` — DataFrame 등록 + pandas 표현식 계산 위임
 - [ ] SpreadsheetLLM류 압축 인코딩 도구 (초대형 워크북) — ②의 효과 확인 후 재평가
       (참조 구현 보유. eval이 공개 Space에서 임의 코드 실행이 되므로 격리 설계 필요)
