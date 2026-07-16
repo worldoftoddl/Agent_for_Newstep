@@ -62,7 +62,21 @@ def _with_displays(tool) -> StructuredTool:
     """
 
     async def _run(**kwargs):
-        result = await tool.coroutine(**kwargs)
+        try:
+            result = await tool.coroutine(**kwargs)
+        except Exception as e:
+            # MCP 서버측 검증 오류(_MCPToolExecutionError 등)가 예외로 던져지면
+            # 런 전체가 죽는다 (실측: gpt-oss가 source_type에 리스트 대신 문자열을
+            # 넘겨 스레드 사망 → UI까지 크래시). excel 도구와 같은 방침으로
+            # "오류: …" 텍스트를 돌려줘 모델이 인수를 고쳐 재시도하게 한다.
+            msg = (
+                f"오류: {tool.name} 호출 실패 — {e}\n"
+                '인수를 도구 스키마에 맞게 고쳐 다시 호출하세요 '
+                '(리스트 인수는 ["값"] 형태, 단일 값도 리스트로 감쌀 것).'
+            )
+            if tool.response_format == "content_and_artifact":
+                return msg, None
+            return msg
         if isinstance(result, tuple) and len(result) == 2:
             content, artifact = result
             return _process_content(content), artifact

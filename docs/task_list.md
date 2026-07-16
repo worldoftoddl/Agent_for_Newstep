@@ -265,6 +265,14 @@ README로 프로젝트 소개 완결 (PRD 성공 기준 5).
       도구 호출 검증 완료. ZeroGPU는 Gradio SDK 전용이라 Docker Space 불가(실측 조사)
     - 함정: CLI용 HF_TOKEN(write)에는 Inference Providers 호출 권한이 없어 403 —
       fine-grained **HF_INFERENCE_TOKEN**(Inference Providers 권한만) 별도 발급
+    - 사고·수정(2026-07-16): 사용자가 Space에서 gpt-oss-120b로 docx 브리핑 요청 시
+      React #185 크래시. 근본 원인은 서버측 — gpt-oss가 standards_search의
+      source_type에 리스트 대신 문자열을 넘겨 _MCPToolExecutionError로 **런 전체
+      사망**(스레드 status=error), UI 크래시는 그 오류 스트림의 2차 증상.
+      수정: mcp_client._run이 예외를 "오류: …" 텍스트로 변환해 모델이 자가
+      수정하게 함 (excel 도구와 동일 방침). 실측: gpt-oss가 같은 실수 후
+      ["감사기준"]으로 고쳐 재호출, KSA::505 인용 완주. Claude는 스키마를
+      정확히 지켜 그간 드러나지 않았던 문제 — 약한 모델일수록 필수 방어
 - [x] 로컬 모델 지원 (2026-07-16) — Ollama 채택. WSL2에 0.20.0이 systemd 서비스로
       **이미 설치돼 있었음**(:11434, 재설치 불필요). qwen3:8b pull(도구 호출 지원,
       RTX 3080 8GB 적재). 기존 `local:` 라우트(OpenAI 호환 :11434/v1) 그대로 사용
