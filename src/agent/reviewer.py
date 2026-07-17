@@ -174,7 +174,13 @@ class TriageDecision(BaseModel):
 class Finding(BaseModel):
     title: str = Field(description="소견 한 줄 요약")
     severity: Literal["높음", "중간", "낮음"]
-    location: str = Field(description="근거 위치 — 시트!셀 또는 시트!범위, 없으면 시트명")
+    location: str = Field(
+        description=(
+            "근거 위치 — 셀 좌표만 쓰지 말고 사람이 읽는 설명에 좌표를 "
+            "괄호로 붙인다. 예: '5410 조회서 시트의 가람테크 회신 차이 "
+            "메모(D6)', '5400 Lead 시트의 대손충당금 행(B8)'"
+        )
+    )
     detail: str = Field(description="무엇이 왜 문제/필요한지 신입 회계사가 이해할 설명")
     standards_query: str = Field(
         default="",
@@ -194,7 +200,12 @@ class Finding(BaseModel):
 
 class ReviewFindings(BaseModel):
     workpaper_purpose: str = Field(description="이 조서의 목적·대상 계정 한두 문장")
-    performed_procedures: list[str] = Field(description="증거에서 확인되는 수행된 절차")
+    performed_procedures: list[str] = Field(
+        description=(
+            "증거에서 확인되는 수행된 절차 — 위치 언급 시 셀 좌표만 나열하지 "
+            "말고 '어느 시트의 무엇(셀주소)' 형태로 쓴다"
+        )
+    )
     missing_procedures: list[Finding] = Field(description="누락되었거나 미완성인 절차")
     signoff_assessment: str = Field(description="서명란 스캔 결과 해석 — 작성·검토 완료 여부")
     tieout_findings: list[Finding] = Field(
@@ -540,7 +551,10 @@ class ReviewerNodes:
                             "당신은 회계법인의 감사조서 검토자입니다. 제공된 기계 수집 "
                             "증거(워크북 구조·수식 지도·주석·서명란 스캔)와 추가 조사 "
                             "결과만 사용해 조서 완성도를 평가하세요. 증거에 없는 내용을 "
-                            "추정하지 말고, 모든 소견에 근거 위치(시트!셀)를 표기하세요. "
+                            "추정하지 마세요. 근거 위치는 셀 좌표만 나열하면 신입이 "
+                            "알아듣지 못합니다 — '어느 시트의 무엇(셀주소)'처럼 그 "
+                            "위치가 무엇인지 설명하고 좌표는 괄호로 붙이세요 "
+                            "(예: '5410 조회서 시트의 회신 대기 5건 행(D8:D12)'). "
                             "수식 지도의 하드코딩 숫자는 오류일 수도 의도된 입력일 수도 "
                             "있으니 맥락으로 판단하되 단정하지 마세요. 기준서 번호를 "
                             "본문에 직접 인용하지 말고, 기준서 근거가 필요한 소견에는 "
