@@ -1,4 +1,4 @@
-# ExcelBrief for Newsteps
+# Agent for Newstep
 
 **신입(뉴스텝) 회계사를 위한 감사조서 해설 에이전트**입니다.
 Excel 감사조서를 직접 읽고, 한국 회계감사기준·K-IFRS·회계감사실무지침에 근거해 설명합니다.

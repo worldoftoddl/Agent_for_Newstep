@@ -1,12 +1,12 @@
 export const siteConfig = {
   meta: {
-    title: "ExcelBrief for Newsteps",
+    title: "Agent for Newstep",
     description:
       "신입 회계사를 위한 감사조서(Excel) 해설 에이전트 — 조서를 읽고, 수행된 절차를 감사기준·K-IFRS 근거와 함께 설명합니다.",
-    favicon: "", // 빈값이면 logoPath 사용
+    favicon: "/favicon.svg",
   },
   branding: {
-    appName: "ExcelBrief for Newsteps",
+    appName: "Agent for Newstep",
     logoPath: "/logo.png",
     logoWidth: 28,
     logoHeight: 28,

@@ -87,14 +87,6 @@ export function WelcomeScreen({
     >
       <div className="flex flex-col items-center gap-3">
         <div className="flex items-center gap-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={config.branding.logoPath}
-            alt="Logo"
-            width={config.branding.logoWidth * 1.5}
-            height={config.branding.logoHeight * 1.5}
-            className="flex-shrink-0"
-          />
           <h1 className="text-2xl font-semibold tracking-tight">
             {config.branding.appName}
           </h1>

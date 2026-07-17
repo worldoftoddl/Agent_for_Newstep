@@ -227,13 +227,6 @@ function MainLayoutContent({ children, assistantId }: MainLayoutContentProps) {
                 className="focus-visible:ring-ring flex cursor-pointer items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:outline-none"
                 onClick={handleLogoClick}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={config.branding.logoPath}
-                  alt="Logo"
-                  width={config.branding.logoWidth}
-                  height={config.branding.logoHeight}
-                />
                 <span className="text-xl font-semibold tracking-tight">
                   {config.branding.appName}
                 </span>

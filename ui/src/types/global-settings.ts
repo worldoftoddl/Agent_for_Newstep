@@ -90,9 +90,9 @@ export const DEFAULT_SETTINGS: GlobalSettings = {
   "features.defaultConnectionApiUrl": "",
 
   // Branding
-  "branding.appTitle": "ExcelBrief for Newsteps",
+  "branding.appTitle": "Agent for Newstep",
   "branding.logoUrl": "/logo.png",
-  "branding.faviconUrl": "", // 빈 값 = logoUrl 사용
+  "branding.faviconUrl": "/favicon.svg",
 };
 
 /**
