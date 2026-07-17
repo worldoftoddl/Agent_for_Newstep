@@ -15,12 +15,11 @@ standards_get_paragraph 재확인을 수행한다 — 검색어 생성은 LLM(as
 검색 실행·인용 확정은 코드가 맡는다. MCP 미연결 시 cite는 인용 없이
 통과한다(우아한 강등). 보고서 형식은 템플릿이 고정한다.
 
-한계(보고서에 고지): 기준서·지침 근거 인용은 이 그래프가 하지 않는다 —
-근거가 필요하면 agent 그래프(기준서 도구 보유)를 사용한다.
+증거 수집(evidence.py)과 인용 확정(standards_lookup.py)은 explainer와
+공용 계층이다.
 """
 
 import asyncio
-import json
 from typing import Any, Literal
 
 from langchain_core.messages import (
@@ -32,10 +31,10 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated, TypedDict
 
+from agent.evidence import MAX_SHEETS, collect_workpaper_evidence
 from agent.graph import DEFAULT_MODEL, resolve_model
 from agent.graph_common import (
     conversation_context,
@@ -45,22 +44,16 @@ from agent.graph_common import (
     missing_file_message,
 )
 from agent.mcp_client import get_standards_tools
+from agent.standards_lookup import resolve_citation, tool_text
 from agent.tools.excel import (
-    _detect_blocks,
-    _load,
-    _resolve,
     excel_find,
     excel_formula_map,
     excel_get_annotations,
     excel_read_range,
     excel_sheet_stats,
-    excel_workbook_overview,
     list_workpapers,
 )
 
-MAX_SHEETS = 6
-MAX_BLOCK_CELLS = 400  # 시트당 본문 정독 상한 (excel_read_range 상한 500 미만)
-MAX_EVIDENCE_CHARS = 28_000
 MAX_ASSESS_ATTEMPTS = 2
 
 # investigate 미니 ReAct의 상한 — 재량은 주되 폭주는 구조로 막는다
@@ -82,88 +75,6 @@ INVESTIGATE_TOOLS = (
     excel_formula_map,
     excel_get_annotations,
 )
-
-SIGNOFF_KEYWORDS = (
-    "작성자", "검토자", "작성일", "검토일", "서명", "확인자",
-    "Preparer", "Reviewer", "Prepared by", "Reviewed by",
-)
-
-
-# ── 서명란 스캔 (비LLM) ──────────────────────────────────────────────────
-def _scan_signoffs(target) -> str:
-    """작성/검토 표지 셀을 찾아 같은 셀·오른쪽·아래 셀의 채움 여부를 판정한다."""
-    wb = _load(target, data_only=True)
-    lines = []
-    for ws in wb.worksheets:
-        if ws.sheet_state != "visible":
-            continue
-        for row in ws.iter_rows():
-            for cell in row:
-                value = cell.value
-                if not isinstance(value, str):
-                    continue
-                text = value.strip()
-                # 긴 문장 속 우연 일치(예: "…검토자는 다음을 확인한다")는 표지가 아님
-                if len(text) > 30 or not any(k in text for k in SIGNOFF_KEYWORDS):
-                    continue
-                inline = text.split(":", 1)[1].strip() if ":" in text else ""
-                right = ws.cell(row=cell.row, column=cell.column + 1).value
-                below = ws.cell(row=cell.row + 1, column=cell.column).value
-                filled = (
-                    inline
-                    or (str(right).strip() if right is not None else "")
-                    or (str(below).strip() if below is not None else "")
-                )
-                status = f"채움({filled[:20]})" if filled else "공란"
-                lines.append(f"- {ws.title}!{cell.coordinate} \"{text}\" → {status}")
-    if not lines:
-        return "[서명란 스캔] 작성·검토 표지를 찾지 못함"
-    return "[서명란 스캔] (표지 셀 → 같은 셀·오른쪽·아래 값 유무)\n" + "\n".join(lines[:40])
-
-
-def _clip_block_ref(block: dict) -> str:
-    """블록을 정독 상한(MAX_BLOCK_CELLS) 이내로 행을 잘라 ref로 만든다."""
-    rows = max(1, min(block["rows"], MAX_BLOCK_CELLS // max(1, block["cols"])))
-    end_row = block["first_row"] + rows - 1
-    return (
-        f"{get_column_letter(block['c1'])}{block['first_row']}:"
-        f"{get_column_letter(block['c2'])}{end_row}"
-    )
-
-
-def _collect_evidence(path_name: str) -> tuple[str, list[str], list[str]]:
-    """검토에 필요한 기계 증거를 기존 도구 함수로 수집한다 (비LLM).
-
-    (증거 텍스트, 점검한 시트, 생략한 시트)를 돌려준다 — 보고서가 점검
-    범위를 결정적으로 표기할 수 있게. 서명란 스캔은 핵심 증거라 증거
-    선두(개요 직후)에 둔다 — 뒤에 두면 MAX_EVIDENCE_CHARS 절단 시 가장
-    먼저 잘려나간다.
-    """
-    target = _resolve(path_name)
-    wb = _load(target, data_only=True)
-    visible = [ws for ws in wb.worksheets if ws.sheet_state == "visible"]
-    examined = [ws.title for ws in visible[:MAX_SHEETS]]
-    skipped = [ws.title for ws in visible[MAX_SHEETS:]]
-    parts = [excel_workbook_overview.func(path_name), _scan_signoffs(target)]
-    for ws in visible[:MAX_SHEETS]:
-        parts.append(excel_formula_map.func(path_name, ws.title))
-        parts.append(excel_get_annotations.func(path_name, ws.title))
-        blocks = _detect_blocks(ws)
-        if blocks:
-            largest = max(blocks, key=lambda b: b["rows"] * b["cols"])
-            parts.append(
-                excel_read_range.func(path_name, ws.title, _clip_block_ref(largest))
-            )
-    if skipped:
-        parts.append(
-            f"(주의: 시트 {len(skipped)}개는 증거 수집에서 생략됨 — "
-            f"상한 {MAX_SHEETS}개: {', '.join(skipped)})"
-        )
-    evidence = "\n\n".join(parts)
-    if len(evidence) > MAX_EVIDENCE_CHARS:
-        evidence = evidence[:MAX_EVIDENCE_CHARS] + "\n… (증거 절단 — 상한 초과)"
-    return evidence, examined, skipped
-
 
 # ── LLM 구조화 소견 ──────────────────────────────────────────────────────
 class TriageDecision(BaseModel):
@@ -231,38 +142,6 @@ class ReviewFindings(BaseModel):
                 for v in value
             ]
         return value
-
-
-async def _tool_text(tool, args: dict) -> str:
-    """mcp_client 래퍼 도구를 직접 호출해 텍스트 콘텐츠만 뽑는다."""
-    raw = await tool.coroutine(**args)
-    content = raw[0] if isinstance(raw, tuple) else raw
-    if isinstance(content, list):
-        content = "\n".join(
-            block.get("text", "") if isinstance(block, dict) else str(block)
-            for block in content
-        )
-    return content if isinstance(content, str) else str(content)
-
-
-def _first_hit(text: str) -> dict | None:
-    """도구 결과 JSON에서 cid를 가진 첫 문단 아이템을 찾는다."""
-    try:
-        payload = json.loads(text)
-    except (json.JSONDecodeError, TypeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    if payload.get("cid"):
-        return payload
-    for key in ("results", "paragraphs"):
-        items = payload.get(key)
-        if not isinstance(items, list):
-            continue
-        for item in items:
-            if isinstance(item, dict) and item.get("cid"):
-                return item
-    return None
 
 
 class ReviewerState(TypedDict, total=False):
@@ -490,7 +369,7 @@ class ReviewerNodes:
                 tool = tools_by_name.get(call["name"])
                 try:
                     result = (
-                        await _tool_text(tool, call["args"])
+                        await tool_text(tool, call["args"])
                         if tool
                         else f"오류: 알 수 없는 도구 {call['name']}"
                     )
@@ -524,7 +403,7 @@ class ReviewerNodes:
     def collect(self, state: ReviewerState) -> dict[str, Any]:
         emit("collecting", f"증거 수집 중: {state['path']} (구조·수식·주석·서명란)")
         try:
-            evidence, examined, skipped = _collect_evidence(state["path"])
+            evidence, examined, skipped = collect_workpaper_evidence(state["path"])
             return {
                 "evidence": evidence,
                 "examined": examined,
@@ -687,22 +566,13 @@ class ReviewerNodes:
 
         async def _cite_one(finding: Finding) -> bool:
             """search → get_paragraph는 소견 안에서만 직렬 — 소견 간에는 병렬."""
-            try:
-                args: dict[str, Any] = {"query": finding.standards_query, "top_k": 3}
-                if finding.source_hint:
-                    args["source_type"] = [finding.source_hint]
-                hit = _first_hit(await _tool_text(search, args))
-                if not hit:
-                    return False
-                cid = hit["cid"]
-                confirmed = _first_hit(await _tool_text(get_para, {"cid": cid}))
-                if not confirmed or confirmed.get("cid") != cid:
-                    return False  # 원문 재확인 실패 — 인용을 남기지 않는다
-                finding.citation = confirmed.get("display") or hit.get("display") or cid
-                finding.citation_cid = cid
-                return True
-            except Exception:
+            resolved = await resolve_citation(
+                search, get_para, finding.standards_query, finding.source_hint
+            )
+            if resolved is None:
                 return False
+            finding.citation, finding.citation_cid = resolved
+            return True
 
         # 왕복(≤2회/건)이 직렬로 쌓이지 않게 소견들을 동시에 처리한다 —
         # 벽시계 시간이 합계가 아니라 가장 느린 1건 수준이 된다

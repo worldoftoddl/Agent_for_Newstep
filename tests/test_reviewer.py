@@ -7,13 +7,12 @@ import pytest
 from langchain_core.messages import HumanMessage
 from openpyxl import Workbook
 
+from agent.evidence import collect_workpaper_evidence, scan_signoffs
 from agent.reviewer import (
     Finding,
     ReviewFindings,
     ReviewerNodes,
-    _collect_evidence,
     _render_report,
-    _scan_signoffs,
     reviewer,
 )
 
@@ -47,7 +46,7 @@ def review_dir(tmp_path, monkeypatch):
 
 
 def test_scan_signoffs_detects_filled_and_blank(review_dir):
-    out = _scan_signoffs(review_dir / FILE)
+    out = scan_signoffs(review_dir / FILE)
     assert f'{SHEET}!A2 "작성자" → 채움(김신입)' in out
     assert f'{SHEET}!A3 "검토자" → 공란' in out
 
@@ -58,12 +57,12 @@ def test_scan_signoffs_ignores_long_sentences(review_dir):
     wb = load_workbook(review_dir / FILE)
     wb[SHEET]["A20"] = "검토자는 다음 사항을 확인한 후 서명해야 한다는 안내 문구"
     wb.save(review_dir / FILE)
-    out = _scan_signoffs(review_dir / FILE)
+    out = scan_signoffs(review_dir / FILE)
     assert "A20" not in out
 
 
 def test_collect_evidence_sections(review_dir):
-    out, examined, skipped = _collect_evidence(FILE)
+    out, examined, skipped = collect_workpaper_evidence(FILE)
     assert "워크북:" in out  # overview
     assert "수식 지도:" in out and "하드코딩" in out  # formula_map
     assert "주석·의도 정보:" in out  # annotations
@@ -84,7 +83,7 @@ def test_collect_evidence_sheet_cap_and_report_scope(review_dir):
         ws["A2"] = "값"
     wb.save(review_dir / FILE)
 
-    out, examined, skipped = _collect_evidence(FILE)
+    out, examined, skipped = collect_workpaper_evidence(FILE)
     assert len(examined) == 6 and examined[0] == SHEET
     assert skipped == ["추가6", "추가7"]
     assert "추가6, 추가7" in out  # 생략 시트가 증거에도 명시
