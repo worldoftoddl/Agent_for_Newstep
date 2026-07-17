@@ -16,6 +16,7 @@ import os
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
+from langchain.agents.middleware import SummarizationMiddleware
 from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableConfig
 
@@ -79,12 +80,43 @@ def resolve_model(spec: str):
     return init_chat_model(spec, max_tokens=MAX_TOKENS)
 
 
+# 요약 후 남기는 최근 이력 — AI/Tool 메시지 쌍은 미들웨어가 안 깨지게 보존한다
+SUMMARY_KEEP = ("messages", 20)
+
+
+def summarization_middleware(model, spec: str) -> SummarizationMiddleware:
+    """긴 스레드 대화 이력을 요약으로 치환하는 미들웨어를 조립한다.
+
+    임계는 모델 프로파일 기반 fraction(최대 입력 토큰의 75%)을 우선 쓰고,
+    프로파일이 없는 모델(최신 Claude — 실측: claude-sonnet-5 미등재 —,
+    local:/hf: 오픈모델)은 제공자별 보수적 절대값으로 폴백한다.
+    요약 모델은 라우팅된 모델 그대로 — 로컬 전용 사용자에게 클라우드
+    호출을 발생시키지 않는다.
+    """
+    try:
+        return SummarizationMiddleware(
+            model=model, trigger=("fraction", 0.75), keep=SUMMARY_KEEP
+        )
+    except ValueError:  # 프로파일 미보유 → 절대 토큰 임계
+        if spec.startswith(("local:", "hf:")):
+            tokens = 24_000  # 오픈모델 32k급 컨텍스트 가정
+        elif spec.startswith("anthropic:"):
+            tokens = 150_000  # Claude 계열 200k 컨텍스트의 75%
+        else:
+            tokens = 100_000
+        return SummarizationMiddleware(
+            model=model, trigger=("tokens", tokens), keep=SUMMARY_KEEP
+        )
+
+
 async def graph(config: RunnableConfig):
     """요청 config를 받아 에이전트를 조립하는 팩토리 (langgraph 서버가 호출)."""
     model_spec = (config.get("configurable") or {}).get("model", DEFAULT_MODEL)
+    model = resolve_model(model_spec)
     tools = EXCEL_TOOLS + TABLE_TOOLS + DOCUMENT_TOOLS + list(await get_standards_tools())
     return create_agent(
-        model=resolve_model(model_spec),
+        model=model,
         tools=tools,
         system_prompt=SYSTEM_PROMPT,
+        middleware=[summarization_middleware(model, model_spec)],
     )
