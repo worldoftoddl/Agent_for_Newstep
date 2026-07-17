@@ -143,7 +143,7 @@ def test_render_report_sections_and_severity_order():
         assert section in out
     assert out.index("높음건") < out.index("낮음건")  # 심각도 정렬
     assert "- (해당 없음)" in out  # 빈 섹션 표기
-    assert "agent 그래프" in out  # 한계 고지
+    assert "기계 수집 증거" in out  # 한계 고지
 
 
 class _StubInvestigateModel:
