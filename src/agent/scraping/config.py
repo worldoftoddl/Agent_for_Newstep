@@ -14,5 +14,6 @@ class ScraperConfig:
     max_redirects: int = 5
     chunk_chars: int = 12_000
     chunk_overlap: int = 500
+    max_chunks: int = 5  # 청크당 LLM 1회 — 비용 관문 (초과분은 버리고 고지)
     max_extraction_attempts: int = 2
     user_agent: str = "AgentForNewstep/0.1"
