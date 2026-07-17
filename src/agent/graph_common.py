@@ -10,7 +10,7 @@ from langgraph.config import get_stream_writer
 
 from agent.tools.excel import _base_dir, _supported_files
 
-EXCEL_SUFFIXES = {".xlsx", ".xlsm", ".xls"}
+EXCEL_SUFFIXES = {".xlsx", ".xlsm", ".xls", ".csv"}  # 표 형태 파일 (CSV는 값 전용 단일 시트)
 ATTACHMENT_RE = re.compile(r"\[첨부 파일: ([^\]]+)\]")
 
 

@@ -19,7 +19,13 @@ export const SUPPORTED_FILE_TYPES = [
  * read them. Extension-based check because browsers report unreliable MIME
  * types for Office documents (especially via drag & drop).
  */
-export const DOCUMENT_EXTENSIONS = [".xlsx", ".xlsm", ".xls", ".docx"] as const;
+export const DOCUMENT_EXTENSIONS = [
+  ".xlsx",
+  ".xlsm",
+  ".xls",
+  ".csv",
+  ".docx",
+] as const;
 
 export interface UploadedDocument {
   /** Original file name as selected by the user */
@@ -66,9 +72,9 @@ export async function uploadDocument(file: File): Promise<UploadedDocument> {
  */
 const ERROR_MESSAGES = {
   INVALID_FILE_TYPE:
-    "지원하지 않는 파일 형식입니다. 이미지(JPEG/PNG/GIF/WEBP), PDF, Excel(xlsx/xlsm/xls), Word(docx)만 업로드할 수 있습니다.",
+    "지원하지 않는 파일 형식입니다. 이미지(JPEG/PNG/GIF/WEBP), PDF, Excel(xlsx/xlsm/xls), CSV, Word(docx)만 업로드할 수 있습니다.",
   INVALID_FILE_TYPE_PASTE:
-    "붙여넣은 파일 형식을 지원하지 않습니다. 이미지(JPEG/PNG/GIF/WEBP), PDF, Excel(xlsx/xlsm/xls), Word(docx)만 가능합니다.",
+    "붙여넣은 파일 형식을 지원하지 않습니다. 이미지(JPEG/PNG/GIF/WEBP), PDF, Excel(xlsx/xlsm/xls), CSV, Word(docx)만 가능합니다.",
   DUPLICATE_FILES: (fileNames: string[]) =>
     `중복 파일: ${fileNames.join(", ")} — 같은 파일은 메시지당 한 번만 첨부할 수 있습니다.`,
 } as const;

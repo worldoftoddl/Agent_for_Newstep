@@ -8,7 +8,9 @@ R1C1 정규화·블록 감지·이탈 휴리스틱은 docs/reference/xlsx_agent_
 이식 (알고리즘만 — JSON 봉투·세션 상태는 ExcelBrief 방침에 따라 채택하지 않음).
 """
 
+import csv
 import inspect as _inspect
+import io
 import os
 import re
 from collections import defaultdict
@@ -44,7 +46,7 @@ MAX_PATTERNS_SHOWN = 20
 MAX_DEVIANTS_SHOWN = 30
 
 
-SUPPORTED_PATTERNS = ("*.xlsx", "*.xlsm", "*.xls", "*.docx")
+SUPPORTED_PATTERNS = ("*.xlsx", "*.xlsm", "*.xls", "*.csv", "*.docx")
 
 
 def _base_dir() -> Path:
@@ -106,10 +108,57 @@ def _load_xls(path_str: str):
     return wb
 
 
+def _csv_cell(text: str):
+    """CSV 문자열 셀을 보수적으로 타입 추론한다 — int/float만, 콤마 서식은 건드리지 않음."""
+    value = text.strip()
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        return text
+
+
+def _load_csv(path_str: str):
+    """CSV를 값 전용 단일 시트 워크북으로 변환한다 (.xls 변환과 같은 접근).
+
+    한국 실무 CSV는 cp949 인코딩이 흔하므로 utf-8-sig → cp949 순으로 시도한다.
+    수식·서식·메모는 형식상 존재하지 않는다.
+    """
+    raw = Path(path_str).read_bytes()
+    for encoding in ("utf-8-sig", "cp949"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        text = raw.decode("utf-8", errors="replace")
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.excel
+    wb = Workbook()
+    ws = wb.active
+    stem = re.sub(r"[\[\]:*?/\\]", "_", Path(path_str).stem)  # openpyxl 시트명 금지문자
+    ws.title = stem[:31] or "CSV"
+    for r, row in enumerate(csv.reader(io.StringIO(text), dialect), start=1):
+        for c, cell in enumerate(row, start=1):
+            if cell == "":
+                continue
+            ws.cell(row=r, column=c, value=_csv_cell(cell))
+    return wb
+
+
 @lru_cache(maxsize=8)
 def _load_cached(path_str: str, mtime: float, data_only: bool):
-    if path_str.lower().endswith(".xls"):
+    lower = path_str.lower()
+    if lower.endswith(".xls"):
         return _load_xls(path_str)
+    if lower.endswith(".csv"):
+        return _load_csv(path_str)
     return load_workbook(path_str, read_only=False, data_only=data_only)
 
 
@@ -221,7 +270,7 @@ def _detect_blocks(ws) -> list[dict]:
 
 @tool
 def list_workpapers() -> str:
-    """조서 폴더에 있는 파일 목록을 반환한다 (Excel: xlsx/xlsm/xls, Word: docx).
+    """조서 폴더에 있는 파일 목록을 반환한다 (Excel: xlsx/xlsm/xls, CSV, Word: docx).
 
     파일명이 기억나지 않거나 사용자가 파일을 모호하게 지칭할 때,
     또는 사용자가 방금 업로드한 파일을 찾을 때 먼저 호출한다.
@@ -229,7 +278,7 @@ def list_workpapers() -> str:
     base = _base_dir()
     files = _supported_files(base)
     if not files:
-        return f"조서 폴더({base})에 지원되는 파일(xlsx/xlsm/xls/docx)이 없습니다."
+        return f"조서 폴더({base})에 지원되는 파일(xlsx/xlsm/xls/csv/docx)이 없습니다."
     return f"조서 폴더 파일 목록:\n" + "\n".join(
         f"- {p.name} ({p.stat().st_size // 1024:,} KB)" for p in files
     )
@@ -341,6 +390,8 @@ def excel_read_range(path: str, sheet: str, cell_range: str, mode: str = "values
     }.get(mode, " (저장된 값 — 수식 재계산 아님)")
     if target.suffix.lower() == ".xls":
         note = " (.xls 구형 형식 — 수식·서식은 읽을 수 없어 저장된 값만 표시)"
+    elif target.suffix.lower() == ".csv":
+        note = " (CSV — 수식·서식이 없는 값 전용 형식)"
     return f"{sheet}!{cell_range}{note}\n" + "\n".join(rows)
 
 
@@ -454,6 +505,11 @@ def excel_formula_map(path: str, sheet: str) -> str:
     if target.suffix.lower() == ".xls":
         return (
             f"수식 지도: {sheet} — .xls 구형 형식은 수식을 제공하지 않습니다. "
+            f"값 확인은 excel_read_range를 사용하세요."
+        )
+    if target.suffix.lower() == ".csv":
+        return (
+            f"수식 지도: {sheet} — CSV는 수식이 없는 값 전용 형식입니다. "
             f"값 확인은 excel_read_range를 사용하세요."
         )
 

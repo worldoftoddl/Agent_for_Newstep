@@ -164,7 +164,7 @@ export function ActionBar({
               type="file"
               onChange={onFileUpload}
               multiple
-              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,.xlsx,.xlsm,.xls,.docx"
+              accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,.xlsx,.xlsm,.xls,.csv,.docx"
               className="hidden"
             />
           </>

@@ -8,7 +8,7 @@ import path from "path";
 // 매칭된다. (/api/upload는 벤더 UI의 스키마 폼 URL 모드용 — 용도가 다르다.)
 export const runtime = "nodejs";
 
-const ALLOWED_EXTENSIONS = new Set([".xlsx", ".xlsm", ".xls", ".docx"]);
+const ALLOWED_EXTENSIONS = new Set([".xlsx", ".xlsm", ".xls", ".csv", ".docx"]);
 const MAX_BYTES = 20 * 1024 * 1024; // 20MB
 
 function workpapersDir(): string {
@@ -61,7 +61,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!ALLOWED_EXTENSIONS.has(ext)) {
     return Response.json(
       {
-        error: `지원하지 않는 형식입니다 (${ext || "확장자 없음"}). xlsx, xlsm, xls, docx만 업로드할 수 있습니다.`,
+        error: `지원하지 않는 형식입니다 (${ext || "확장자 없음"}). xlsx, xlsm, xls, csv, docx만 업로드할 수 있습니다.`,
       },
       { status: 400 },
     );

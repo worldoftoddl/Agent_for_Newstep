@@ -287,6 +287,14 @@ README로 프로젝트 소개 완결 (PRD 성공 기준 5).
       혼합 열 강등 시 "nan" 문자열 생성·null 집계 0 (pd.isna로 판정해야 함)
     - e2e(Haiku): overview→read_range→load_table→query_table 순서로 자발 사용,
       한글 열명 인용 GROUP BY SQL 작성, 근거 범위(시트!범위) 병기 확인
+- [x] CSV 입력 지원 (2026-07-17) — `_load_csv`가 CSV를 값 전용 단일 시트
+      워크북으로 변환(.xls 변환과 같은 접근)해 모든 Excel 도구·표 SQL·그래프가
+      무수정 동작. 시트명은 파일 stem(금지문자 치환·31자 절단)
+    - 인코딩: utf-8-sig → cp949 순 시도 (한국 실무 CSV는 cp949가 흔함, 실측
+      테스트), 구분자는 csv.Sniffer(,;탭|) 폴백 excel
+    - 타입: int→float→문자열 보수 추론 (콤마 천단위 서식은 건드리지 않음 —
+      "1,234"는 문자열 유지)
+    - UI: 업로드 허용 확장자·오류 문구·accept 속성·사용 안내에 csv 추가
 - [x] `analyst` 별도 그래프 (2026-07-17) — 원본의 고정 워크플로(inspect→
       plan_sql→validate→execute→answer + revise 루프 최대 2회)를 채팅용으로
       각색해 두 번째 그래프로 등록 (UI 그래프 셀렉터가 다중 그래프 설계라는
