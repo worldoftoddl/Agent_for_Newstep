@@ -18,9 +18,23 @@ export interface GraphMeta {
  */
 export const GRAPH_META: Record<string, GraphMeta> = {
   agent: {
-    displayName: "조서 해설 Agent",
-    description: siteConfig.branding.description,
+    displayName: "All-in-One Agent",
+    description:
+      "조서 읽기·표 SQL·기준서 검색 도구를 모두 쥔 범용 ReAct 에이전트 — " +
+      "여러 파일을 넘나드는 질문이나 기준서 자체 질문은 여기서 하세요.",
     starters: CHAT_STARTERS,
+  },
+  explainer: {
+    displayName: "조서 해설 Agent",
+    description:
+      "조서 하나를 정독해 구조·수행 절차·근거 기준을 신입 눈높이로 해설합니다 — " +
+      "해설할 조서를 첨부하거나 파일명을 언급하세요.",
+    starters: [
+      "데모조서 5300 현금및현금성자산 조서를 해설해줘.",
+      "작성중인 데모조서 5400 매출채권 조서를 해설해줘. 어떤 절차가 수행됐어?",
+      "감사조서서식_3650 감사 전 재무제표 확인 서식이 뭔지 설명해줘.",
+      "3900 핵심감사사항 조서에는 무엇을 채워야 해?",
+    ],
   },
   analyst: {
     displayName: "대형 엑셀 분석 Agent",
