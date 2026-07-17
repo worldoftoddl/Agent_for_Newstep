@@ -19,7 +19,7 @@ from langchain_core.tools import tool
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import RetryPolicy
 
-from agent.graph_common import emit
+from agent.graph_common import emit, msg_text
 from agent.scraping import HttpFetcher, ScraperConfig, html_to_text, split_text, validate_public_url
 
 
@@ -39,6 +39,17 @@ class ScraperState(ScraperInput, total=False):
     result: Any
     attempts: int
     error: str | None
+
+
+def _response_value(response: Any) -> Any:
+    """LLM 응답에서 값을 꺼낸다 — 구조화 출력(dict)은 그대로, 메시지는 텍스트만.
+
+    anthropic output_version="v1"은 content가 블록 리스트(reasoning 포함)라
+    .content를 그대로 쓰면 서명 딸린 reasoning 블록까지 결과에 섞인다.
+    """
+    if not hasattr(response, "content"):
+        return response
+    return msg_text(response)
 
 
 def _has_value(value: Any) -> bool:
@@ -117,7 +128,7 @@ class ScraperNodes:
                 ),
             ]
             response = extractor.invoke(messages)
-            results.append(response.content if hasattr(response, "content") else response)
+            results.append(_response_value(response))
         return {"chunk_results": results, "attempts": attempt, "error": None}
 
     def merge_results(self, state: ScraperState) -> dict[str, Any]:
@@ -140,7 +151,7 @@ class ScraperNodes:
             HumanMessage(content=f"Instruction:\n{state['instruction']}\n\nResults:\n{results!r}"),
         ]
         response = merger.invoke(messages)
-        return {"result": response.content if hasattr(response, "content") else response}
+        return {"result": _response_value(response)}
 
     def validate_result(self, state: ScraperState) -> dict[str, Any]:
         emit("validating_result", "추출 결과를 검증하는 중")

@@ -90,6 +90,23 @@ def test_chunk_cap_drops_tail_and_reports():
     assert result["chunks_dropped"] >= 1
 
 
+def test_extraction_keeps_only_text_from_block_content():
+    """anthropic output_version=v1: content가 reasoning 블록 섞인 리스트여도 텍스트만 남는다."""
+    blocks = [
+        {"type": "reasoning", "reasoning": "", "extras": {"signature": "xxx"}},
+        {"type": "text", "text": "제목: Example Domain"},
+    ]
+    graph = build_scraper_graph(
+        model=FakeModel(text=blocks),
+        config=ScraperConfig(chunk_chars=1_000),
+        fetcher=FakeFetcher(),
+    )
+
+    result = graph.invoke({"url": "https://example.com/p", "instruction": "추출"})
+
+    assert result["result"] == "제목: Example Domain"
+
+
 def test_tool_returns_source_header_and_text():
     tool = make_web_extract_tool(
         FakeModel(text="위젯 가격은 12달러"),
