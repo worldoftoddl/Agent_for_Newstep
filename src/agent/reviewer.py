@@ -59,10 +59,10 @@ MAX_ASSESS_ATTEMPTS = 2
 # investigate 미니 ReAct의 상한 — 재량은 주되 폭주는 구조로 막는다
 MAX_INVESTIGATE_ROUNDS = 3  # 모델 응답 횟수
 MAX_INVESTIGATE_CALLS = 6  # 도구 호출 총량
-MAX_TOOL_RESULT_CHARS = 4_000  # 호출당 결과 클립
+MAX_TOOL_RESULT_CHARS = 6_000  # 호출당 결과 클립
 MAX_EXTRA_EVIDENCE_CHARS = 8_000  # 추가 증거 총량
 
-MAX_CITED_FINDINGS = 5  # cite가 근거를 찾는 소견 수 (심각도순)
+MAX_CITED_FINDINGS = 10  # cite가 근거를 찾는 소견 수 (심각도순)
 
 # chat 미니 ReAct(기준서 도구)의 상한
 MAX_CHAT_TOOL_ROUNDS = 3

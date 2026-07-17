@@ -54,10 +54,10 @@ MAX_EXPLAIN_ATTEMPTS = 2
 # investigate 미니 ReAct의 상한 (reviewer와 동일 패턴)
 MAX_INVESTIGATE_ROUNDS = 3
 MAX_INVESTIGATE_CALLS = 6
-MAX_TOOL_RESULT_CHARS = 4_000
+MAX_TOOL_RESULT_CHARS = 6_000
 MAX_EXTRA_EVIDENCE_CHARS = 8_000
 
-MAX_CITED_NOTES = 5  # cite가 근거를 찾는 절차 해설 수
+MAX_CITED_NOTES = 10  # cite가 근거를 찾는 절차 해설 수
 
 # chat 미니 ReAct(기준서 도구)의 상한
 MAX_CHAT_TOOL_ROUNDS = 3
