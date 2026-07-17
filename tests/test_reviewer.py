@@ -254,6 +254,42 @@ async def test_cite_attaches_verified_citation(review_dir, monkeypatch):
     assert "## 근거 목록" in report and "`KSA::505::7`" in report
 
 
+async def test_cite_runs_findings_concurrently(review_dir, monkeypatch):
+    """소견 3건 × 왕복 2회(각 0.2초) — 직렬이면 1.2초, 병렬이면 ~0.4초."""
+    import asyncio
+    import time
+    from types import SimpleNamespace
+
+    import agent.reviewer as reviewer_mod
+
+    async def slow_search(**kwargs):
+        await asyncio.sleep(0.2)
+        return '{"results": [{"cid": "KSA::505::7", "display": "감사기준서 505 문단 7"}]}'
+
+    async def slow_para(**kwargs):
+        await asyncio.sleep(0.2)
+        return '{"paragraphs": [{"cid": "KSA::505::7", "display": "감사기준서 505 문단 7"}]}'
+
+    async def fake_tools():
+        return [
+            SimpleNamespace(name="standards_search", coroutine=slow_search),
+            SimpleNamespace(name="standards_get_paragraph", coroutine=slow_para),
+        ]
+
+    monkeypatch.setattr(reviewer_mod, "get_standards_tools", fake_tools)
+    findings = _findings_with_query()
+    findings.missing_procedures *= 3  # 동일 소견 3건
+    nodes = ReviewerNodes(model=None)
+
+    start = time.monotonic()
+    update = await nodes.cite({"findings": findings.model_dump()})
+    elapsed = time.monotonic() - start
+
+    result = ReviewFindings.model_validate(update["findings"])
+    assert all(f.citation_cid == "KSA::505::7" for f in result.missing_procedures)
+    assert elapsed < 0.9  # 직렬(1.2초)이 아니라 병렬(~0.4초) 실행
+
+
 async def test_cite_graceful_without_mcp(review_dir, monkeypatch):
     import agent.reviewer as reviewer_mod
 

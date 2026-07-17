@@ -19,6 +19,7 @@ standards_get_paragraph 재확인을 수행한다 — 검색어 생성은 LLM(as
 근거가 필요하면 agent 그래프(기준서 도구 보유)를 사용한다.
 """
 
+import asyncio
 import json
 from typing import Any, Literal
 
@@ -615,24 +616,29 @@ class ReviewerNodes:
             ),
             key=lambda f: order[f.severity],
         )[:MAX_CITED_FINDINGS]
-        cited = 0
-        for finding in targets:
+
+        async def _cite_one(finding: Finding) -> bool:
+            """search → get_paragraph는 소견 안에서만 직렬 — 소견 간에는 병렬."""
             try:
                 args: dict[str, Any] = {"query": finding.standards_query, "top_k": 3}
                 if finding.source_hint:
                     args["source_type"] = [finding.source_hint]
                 hit = _first_hit(await _tool_text(search, args))
                 if not hit:
-                    continue
+                    return False
                 cid = hit["cid"]
                 confirmed = _first_hit(await _tool_text(get_para, {"cid": cid}))
                 if not confirmed or confirmed.get("cid") != cid:
-                    continue  # 원문 재확인 실패 — 인용을 남기지 않는다
+                    return False  # 원문 재확인 실패 — 인용을 남기지 않는다
                 finding.citation = confirmed.get("display") or hit.get("display") or cid
                 finding.citation_cid = cid
-                cited += 1
+                return True
             except Exception:
-                continue
+                return False
+
+        # 왕복(≤2회/건)이 직렬로 쌓이지 않게 소견들을 동시에 처리한다 —
+        # 벽시계 시간이 합계가 아니라 가장 느린 1건 수준이 된다
+        cited = sum(await asyncio.gather(*(_cite_one(f) for f in targets)))
         if cited:
             emit("citing", f"기준서 근거 {cited}건 확정")
         return {"findings": findings.model_dump()}
