@@ -52,6 +52,34 @@ def test_pick_table_block_prefers_largest(table_dir):
     assert ref == "A3:C6"  # 제목(A1, 1행짜리)이 아니라 표 본체
 
 
+def test_conversation_context_builder():
+    from langchain_core.messages import AIMessage
+
+    from agent.analyst import _conversation_context
+
+    state = {
+        "messages": [
+            HumanMessage(content="부서별 합계"),
+            AIMessage(content="감사1본부 800, 감사2본부 700"),
+            HumanMessage(content="그중 가장 큰 부서만"),
+        ]
+    }
+    ctx = _conversation_context(state)
+    assert "사용자: 부서별 합계" in ctx
+    assert "어시스턴트: 감사1본부 800" in ctx
+    assert "그중 가장 큰 부서만" not in ctx  # 현재 질문은 제외
+
+    # 첫 턴(이력 없음)은 빈 문자열
+    assert _conversation_context({"messages": [HumanMessage(content="첫 질문")]}) == ""
+
+    # 긴 메시지는 클립
+    long_state = {
+        "messages": [HumanMessage(content="가" * 1000), HumanMessage(content="현재")]
+    }
+    ctx = _conversation_context(long_state)
+    assert len(ctx) < 700 and ctx.endswith("…")
+
+
 def test_triage_fallback_heuristic(table_dir):
     """model=None이면 LLM 분류가 예외 → 파일 언급 유무 휴리스틱으로 폴백."""
     nodes = AnalystNodes(model=None)
@@ -151,6 +179,36 @@ def test_validate_and_execute_without_llm(table_dir):
 
     state.update(nodes.validate_sql({"sql": "DROP TABLE data", "attempts": 2}))
     assert state["error"] and nodes.route_sql(state | {"attempts": 2}) == "fail"
+
+
+@pytest.mark.skipif(
+    not os.environ.get("ANTHROPIC_API_KEY"), reason="실 API 키 필요"
+)
+async def test_followup_uses_conversation_context(table_dir):
+    """후속 질의가 이전 대화 맥락('그중')을 SQL로 해석하는지."""
+    from langchain_core.messages import AIMessage
+
+    graph = await analyst(
+        {"configurable": {"model": "anthropic:claude-haiku-4-5-20251001"}}
+    )
+    result = await graph.ainvoke(
+        {
+            "messages": [
+                HumanMessage(content=f"[첨부 파일: {FILE}] 부서별 금액 합계를 알려줘"),
+                AIMessage(
+                    content=(
+                        "부서별 합계: 감사1본부 800, 감사2본부 700 "
+                        f"({FILE} [{SHEET}] A3:C6)"
+                    )
+                ),
+                HumanMessage(content="그중 합계가 가장 큰 부서만 다시 보여줘"),
+            ]
+        }
+    )
+    answer = result["messages"][-1]
+    text = answer.content if isinstance(answer.content, str) else str(answer.content)
+    assert "감사1본부" in text  # 맥락('그중')을 해석해 최대 부서를 특정
+    assert "오류:" not in text
 
 
 @pytest.mark.skipif(

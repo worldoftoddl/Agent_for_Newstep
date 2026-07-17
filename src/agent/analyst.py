@@ -37,6 +37,7 @@ from agent.graph_common import (
     find_target_file as _find_target_file,
     human_texts_newest_first as _human_texts_newest_first,
     missing_file_message,
+    msg_text as _msg_text,
 )
 from agent.tools.excel import _base_dir, _detect_blocks, _load, list_workpapers
 from agent.tools.table import (
@@ -48,6 +49,8 @@ from agent.tools.table import (
 )
 
 MAX_SQL_REVISIONS = 2
+MAX_CONTEXT_MESSAGES = 6  # plan/answer에 주입하는 직전 대화 메시지 수
+MAX_CONTEXT_CHARS = 600  # 메시지당 클립 길이
 
 # 질문 속 "시트명!A1:C50" 또는 "A1:C50" — 명시 범위는 자동 블록 선택보다 우선
 _RANGE_RE = re.compile(
@@ -109,6 +112,30 @@ def _trim_title_rows(ws, block: dict) -> str:
     )
 
 
+def _conversation_context(state: "AnalystState") -> str:
+    """직전 대화(현재 질문 제외 최근 N개)를 plan/answer 프롬프트용으로 요약한다.
+
+    분석 경로는 원본 이식 구조상 최신 질문만 쓰는데, 스레드에서는
+    "그중 상위 3개만" 같은 후속 질의가 흔하다 — 맥락 없이는 오해한다.
+    """
+    msgs = state.get("messages") or []
+    if len(msgs) <= 1:
+        return ""
+    lines = []
+    for m in msgs[-(MAX_CONTEXT_MESSAGES + 1) : -1]:
+        kind = getattr(m, "type", None)
+        role = {"human": "사용자", "ai": "어시스턴트"}.get(kind)
+        if role is None:
+            continue
+        text = _msg_text(m).strip()
+        if not text:
+            continue
+        if len(text) > MAX_CONTEXT_CHARS:
+            text = text[:MAX_CONTEXT_CHARS] + "…"
+        lines.append(f"{role}: {text}")
+    return "\n".join(lines)
+
+
 def _explicit_range(target, texts: list[str]):
     """질문에 명시된 범위를 찾아 (시트, 범위)로 돌려준다. 없으면 None.
 
@@ -163,6 +190,8 @@ class AnalystNodes:
         if not question:
             return {"question": question, "mode": "chat"}
         has_file = _find_target_file(texts) is not None
+        context = _conversation_context(state)
+        context_part = f"이전 대화:\n{context}\n" if context else ""
         try:
             decider = self.model.with_structured_output(TriageDecision)
             result = decider.invoke(
@@ -173,11 +202,13 @@ class AnalystNodes:
                             "메시지가 표 데이터에 대한 집계·필터·정렬·계산 요청이면 "
                             "analysis, 인사·사용법 질문·기능 문의·이전 결과에 대한 "
                             "후속 설명처럼 SQL 실행이 필요 없는 대화면 chat으로 "
-                            "분류하세요."
+                            "분류하세요. 이전 대화의 분석을 새 조건으로 이어가는 "
+                            "후속 요청(예: '그중 상위 3개만')은 analysis입니다."
                         )
                     ),
                     HumanMessage(
                         content=(
+                            f"{context_part}"
                             f"메시지: {question}\n"
                             f"메시지에 분석 대상 파일 언급 존재: {has_file}"
                         )
@@ -192,7 +223,8 @@ class AnalystNodes:
             mode = decision.mode
         except Exception:
             mode = "analysis" if has_file else "chat"
-        return {"question": question, "mode": mode}
+        # 이전 턴이 남긴 error가 이번 턴 라우팅을 오염시키지 않게 리셋
+        return {"question": question, "mode": mode, "error": None}
 
     def route_triage(self, state: AnalystState) -> Literal["analysis", "chat"]:
         return "chat" if state.get("mode") == "chat" else "analysis"
@@ -304,6 +336,12 @@ class AnalystNodes:
 
     def _generate_sql(self, state: AnalystState, instruction: str) -> dict[str, Any]:
         planner = self.model.with_structured_output(SQLPlan)
+        context = _conversation_context(state)
+        context_part = (
+            f"Recent conversation (for follow-up questions):\n{context}\n"
+            if context
+            else ""
+        )
         result = planner.invoke(
             [
                 SystemMessage(
@@ -313,11 +351,14 @@ class AnalystNodes:
                         f"columns. Column names may be Korean — always wrap them in "
                         f'double quotes (e.g. SELECT "금액_원" FROM {TABLE}). Never read '
                         f"files, URLs, extensions, catalogs, secrets, or environment "
-                        f"data. Do not use markdown fences."
+                        f"data. Do not use markdown fences. The question may be a "
+                        f"follow-up — resolve references like 'those', 'the top one' "
+                        f"from the recent conversation."
                     )
                 ),
                 HumanMessage(
                     content=(
+                        f"{context_part}"
                         f"Question: {state['question']}\nSchema:\n{state['schema']}\n"
                         f"Profile: {state['profile']!r}\nInstruction: {instruction}"
                     )
@@ -374,12 +415,15 @@ class AnalystNodes:
         _emit("answering", "실행 결과를 해석하는 중", rows=len(state["result_rows"]))
         ds = state["dataset"]
         table_md = _markdown(state["result_columns"], state["result_rows"])
+        context = _conversation_context(state)
+        context_part = f"이전 대화:\n{context}\n\n" if context else ""
         response = self.model.invoke(
             [
                 SystemMessage(
                     content=(
                         "당신은 신입 회계사를 돕는 데이터 분석가입니다. 제공된 쿼리 "
-                        "결과만으로 한국어로 답하세요. 결과가 비었거나 절단됐으면 "
+                        "결과만으로 한국어로 답하세요. 후속 질문이면 이전 대화 맥락을 "
+                        "이어서 답합니다. 결과가 비었거나 절단됐으면 "
                         "그 사실을 밝히고, 상관관계에서 인과를 추론하지 마세요. "
                         "재현을 위해 사용한 SQL을 ```sql 블록으로, 근거로 대상 "
                         "파일·시트·범위를 답변에 포함하세요."
@@ -387,6 +431,7 @@ class AnalystNodes:
                 ),
                 HumanMessage(
                     content=(
+                        f"{context_part}"
                         f"질문: {state['question']}\n"
                         f"대상: {ds['path']} [{ds['sheet']}] {ds['cell_range']}\n"
                         f"SQL: {state['sql']}\n결과:\n{table_md}\n"
