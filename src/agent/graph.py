@@ -23,6 +23,7 @@ from agent.mcp_client import get_standards_tools
 from agent.prompts import SYSTEM_PROMPT
 from agent.tools.documents import DOCUMENT_TOOLS
 from agent.tools.excel import EXCEL_TOOLS
+from agent.tools.table import TABLE_TOOLS
 
 load_dotenv()
 
@@ -81,7 +82,7 @@ def resolve_model(spec: str):
 async def graph(config: RunnableConfig):
     """요청 config를 받아 에이전트를 조립하는 팩토리 (langgraph 서버가 호출)."""
     model_spec = (config.get("configurable") or {}).get("model", DEFAULT_MODEL)
-    tools = EXCEL_TOOLS + DOCUMENT_TOOLS + list(await get_standards_tools())
+    tools = EXCEL_TOOLS + TABLE_TOOLS + DOCUMENT_TOOLS + list(await get_standards_tools())
     return create_agent(
         model=resolve_model(model_spec),
         tools=tools,

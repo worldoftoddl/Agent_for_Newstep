@@ -272,7 +272,21 @@ README로 프로젝트 소개 완결 (PRD 성공 기준 5).
       GitHub만 갱신하면 BUILD_ERROR. hf upload로 Space에도 올려야 반영
 - [ ] 미이식(필요 시): 구 UI의 설정 yaml 3종은 site.ts/DEFAULT_SETTINGS로 대체됨.
       스타터 클릭은 입력창 채움 방식(구 UI는 즉시 전송이었는지 미확인)
-- [ ] `read_table`/`query` — DataFrame 등록 + pandas 표현식 계산 위임
+- [x] `excel_load_table`/`excel_query_table` (2026-07-17) —
+      awesome-llm-apps/For_me/langgraph_data_analysis_agent의 DataStore 이식.
+      시트 범위를 in-memory DuckDB(`data` 테이블)로 등록하고 읽기 전용 SQL로
+      집계·필터·검산. pandas eval 위임 대신 **SQL 화이트리스트**로 RCE 문제 해소
+    - 격리 2중: sqlglot AST 검증(단일 SELECT/WITH만, DDL/DML·타 테이블·
+      read_*/scan/glob 함수 차단) + DuckDB `enable_external_access=false`
+      (엔진 수준 파일·URL 차단 — read_csv('/etc/passwd') 실측 차단)
+    - 원본의 plan/revise 그래프 루프는 채택 안 함 — create_agent ReAct 루프가
+      "오류: …" 텍스트를 받아 SQL 자가 수정 (기존 도구 방침과 동일)
+    - 한글 열명 보존 정규화("금액(원)"→"금액_원", 큰따옴표 인용) — 원본의
+      ASCII 전용 정규화는 한글 헤더가 전부 column_N이 돼 부적합(실측)
+    - 함정: pandas 3은 문자열 열의 None을 NaN으로 바꿈 — `v is None` 판정이면
+      혼합 열 강등 시 "nan" 문자열 생성·null 집계 0 (pd.isna로 판정해야 함)
+    - e2e(Haiku): overview→read_range→load_table→query_table 순서로 자발 사용,
+      한글 열명 인용 GROUP BY SQL 작성, 근거 범위(시트!범위) 병기 확인
 - [ ] SpreadsheetLLM류 압축 인코딩 도구 (초대형 워크북) — ②의 효과 확인 후 재평가
       (참조 구현 보유. eval이 공개 Space에서 임의 코드 실행이 되므로 격리 설계 필요)
 - [x] 멀티 벤더 모델 선택 (2026-07-16) — LiteLLM 게이트웨이 대신 langchain
