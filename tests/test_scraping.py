@@ -8,6 +8,7 @@ import pytest
 
 from agent.scraping import (
     HttpFetcher,
+    JinaFetcher,
     ScraperConfig,
     UnsafeUrlError,
     html_to_text,
@@ -144,3 +145,85 @@ def test_fetch_rejects_non_html_content_type(monkeypatch):
 
     with pytest.raises(ValueError, match="content type"):
         fetcher.fetch("https://example.com/file.pdf")
+
+
+# --- jina_fetcher ---
+
+
+def _jina_with(handler, api_key="", **config_kwargs):
+    config = ScraperConfig(**config_kwargs)
+    fetcher = JinaFetcher(config, api_key=api_key)
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.Client
+
+    class PatchedClient(original_client):
+        def __init__(self, **kwargs):
+            super().__init__(transport=transport, **kwargs)
+
+    return fetcher, PatchedClient
+
+
+def test_jina_fetch_parses_json_and_sends_key(monkeypatch):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("authorization")
+        seen["url"] = str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "code": 200,
+                "data": {"content": "# 본문", "url": "https://example.com/final"},
+            },
+        )
+
+    fetcher, patched = _jina_with(handler, api_key="jina_key")
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    result = fetcher.fetch("https://example.com/page")
+
+    assert result.html == "# 본문"
+    assert result.final_url == "https://example.com/final"
+    assert result.content_type == "text/markdown"
+    assert seen["auth"] == "Bearer jina_key"
+    assert seen["url"] == "https://r.jina.ai/https://example.com/page"
+
+
+def test_jina_fetch_without_key_omits_authorization(monkeypatch):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("authorization")
+        return httpx.Response(200, json={"code": 200, "data": {"content": "본문"}})
+
+    fetcher, patched = _jina_with(handler, api_key="")
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    result = fetcher.fetch("https://example.com/page")
+
+    assert result.final_url == "https://example.com/page"
+    assert seen["auth"] is None
+
+
+def test_jina_fetch_rejects_empty_content(monkeypatch):
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"code": 200, "data": {"content": "  "}})
+
+    fetcher, patched = _jina_with(handler)
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    with pytest.raises(ValueError, match="no content"):
+        fetcher.fetch("https://example.com/empty")
+
+
+def test_jina_fetch_rejects_oversized_response(monkeypatch):
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"code": 200, "data": {"content": "x" * 500}}
+        )
+
+    fetcher, patched = _jina_with(handler, max_response_bytes=100)
+    monkeypatch.setattr(httpx, "Client", patched)
+
+    with pytest.raises(ValueError, match="size limit"):
+        fetcher.fetch("https://example.com/big")

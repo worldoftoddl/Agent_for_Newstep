@@ -39,7 +39,7 @@ def _skip_dns(monkeypatch):
 def test_graph_extracts_structured_result():
     graph = build_scraper_graph(
         model=FakeModel(structured={"name": "Widget", "price": 12}),
-        config=ScraperConfig(chunk_chars=1_000),
+        config=ScraperConfig(use_jina=False,chunk_chars=1_000),
         fetcher=FakeFetcher(),
     )
 
@@ -67,7 +67,7 @@ def test_graph_extracts_structured_result():
 def test_graph_retries_then_fails_on_empty_extraction():
     graph = build_scraper_graph(
         model=FakeModel(text=""),
-        config=ScraperConfig(chunk_chars=1_000, max_extraction_attempts=2),
+        config=ScraperConfig(use_jina=False,chunk_chars=1_000, max_extraction_attempts=2),
         fetcher=FakeFetcher(),
     )
 
@@ -80,7 +80,7 @@ def test_graph_retries_then_fails_on_empty_extraction():
 def test_chunk_cap_drops_tail_and_reports():
     graph = build_scraper_graph(
         model=FakeModel(text="요약"),
-        config=ScraperConfig(chunk_chars=50, chunk_overlap=5, max_chunks=2),
+        config=ScraperConfig(use_jina=False,chunk_chars=50, chunk_overlap=5, max_chunks=2),
         fetcher=FakeFetcher(html="<main>" + "가나다라마바사 " * 100 + "</main>"),
     )
 
@@ -98,7 +98,7 @@ def test_extraction_keeps_only_text_from_block_content():
     ]
     graph = build_scraper_graph(
         model=FakeModel(text=blocks),
-        config=ScraperConfig(chunk_chars=1_000),
+        config=ScraperConfig(use_jina=False,chunk_chars=1_000),
         fetcher=FakeFetcher(),
     )
 
@@ -110,7 +110,7 @@ def test_extraction_keeps_only_text_from_block_content():
 def test_tool_returns_source_header_and_text():
     tool = make_web_extract_tool(
         FakeModel(text="위젯 가격은 12달러"),
-        config=ScraperConfig(chunk_chars=1_000),
+        config=ScraperConfig(use_jina=False,chunk_chars=1_000),
         fetcher=FakeFetcher(),
     )
 
@@ -128,7 +128,7 @@ def test_tool_reports_fetch_error_as_text():
             raise ValueError("Response exceeds configured size limit")
 
     tool = make_web_extract_tool(
-        FakeModel(), config=ScraperConfig(), fetcher=BrokenFetcher()
+        FakeModel(), config=ScraperConfig(use_jina=False), fetcher=BrokenFetcher()
     )
 
     output = tool.invoke({"url": "https://example.com/big", "instruction": "추출"})
@@ -140,7 +140,7 @@ def test_tool_reports_fetch_error_as_text():
 def test_tool_clips_long_result_with_notice():
     tool = make_web_extract_tool(
         FakeModel(text="가" * 10_000),
-        config=ScraperConfig(chunk_chars=1_000),
+        config=ScraperConfig(use_jina=False,chunk_chars=1_000),
         fetcher=FakeFetcher(),
     )
 
@@ -153,10 +153,71 @@ def test_tool_clips_long_result_with_notice():
 def test_tool_relays_chunk_drop_notice():
     tool = make_web_extract_tool(
         FakeModel(text="요약"),
-        config=ScraperConfig(chunk_chars=50, chunk_overlap=5, max_chunks=1),
+        config=ScraperConfig(use_jina=False,chunk_chars=50, chunk_overlap=5, max_chunks=1),
         fetcher=FakeFetcher(html="<main>" + "가나다라마바사 " * 100 + "</main>"),
     )
 
     output = tool.invoke({"url": "https://example.com/long", "instruction": "추출"})
 
     assert "앞부분만 추출" in output
+
+
+# --- Jina 1차 경로 (하이브리드) ---
+
+
+class FakeJina:
+    def __init__(self, markdown="# Widget\n\nPrice: $12", fail=False):
+        self.markdown = markdown
+        self.fail = fail
+
+    def fetch(self, url):
+        if self.fail:
+            raise ValueError("jina down")
+        return FetchResult(html=self.markdown, final_url=url, content_type="text/markdown")
+
+
+class MustNotFetch:
+    def fetch(self, url):
+        raise AssertionError("http fallback must not be used")
+
+
+def test_jina_path_extracts_in_single_pass():
+    graph = build_scraper_graph(
+        model=FakeModel(text="위젯 12달러"),
+        config=ScraperConfig(chunk_chars=50, chunk_overlap=5),
+        fetcher=MustNotFetch(),
+        jina_fetcher=FakeJina(markdown="가나다라마바사 " * 100),
+    )
+
+    result = graph.invoke({"url": "https://example.com/p", "instruction": "추출"})
+
+    assert result["fetch_method"] == "jina"
+    assert len(result["chunks"]) == 1  # chunk_chars=50이어도 청킹 없이 통짜 1회
+    assert result["result"] == "위젯 12달러"
+
+
+def test_jina_failure_falls_back_to_http_path():
+    graph = build_scraper_graph(
+        model=FakeModel(text="요약"),
+        config=ScraperConfig(chunk_chars=1_000),
+        fetcher=FakeFetcher(),
+        jina_fetcher=FakeJina(fail=True),
+    )
+
+    result = graph.invoke({"url": "https://example.com/p", "instruction": "추출"})
+
+    assert result["fetch_method"] == "http"
+    assert result["result"] == "요약"
+
+
+def test_tool_notes_jina_content_clip():
+    tool = make_web_extract_tool(
+        FakeModel(text="요약"),
+        config=ScraperConfig(max_single_pass_chars=100),
+        fetcher=MustNotFetch(),
+        jina_fetcher=FakeJina(markdown="가" * 500),
+    )
+
+    output = tool.invoke({"url": "https://example.com/p", "instruction": "추출"})
+
+    assert "자 미처리" in output

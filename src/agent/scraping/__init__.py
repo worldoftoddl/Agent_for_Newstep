@@ -5,12 +5,14 @@
 
 from .config import ScraperConfig
 from .http_fetcher import FetchResult, HttpFetcher
+from .jina_fetcher import JinaFetcher
 from .processing import html_to_text, split_text
 from .security import UnsafeUrlError, validate_public_url
 
 __all__ = [
     "FetchResult",
     "HttpFetcher",
+    "JinaFetcher",
     "ScraperConfig",
     "UnsafeUrlError",
     "html_to_text",

@@ -8,6 +8,10 @@
 
 이식 시 변경: Playwright browser fallback 제거, 모델은 호출자 주입,
 청크 수 상한(비용 관문)·도구 결과 클립(컨텍스트 보호) 추가.
+
+fetch는 하이브리드: 1차는 Jina Reader(r.jina.ai — JS 렌더링 포함, 마크다운
+반환)로 청킹·병합 없이 통짜 1회 추출, 실패 시 기존 httpx+bs4 경로로 폴백.
+SSRF 검증(validate_public_url)은 두 경로 모두의 입구에서 수행한다.
 """
 
 import json
@@ -20,7 +24,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import RetryPolicy
 
 from agent.graph_common import emit, msg_text
-from agent.scraping import HttpFetcher, ScraperConfig, html_to_text, split_text, validate_public_url
+from agent.scraping import (
+    HttpFetcher,
+    JinaFetcher,
+    ScraperConfig,
+    html_to_text,
+    split_text,
+    validate_public_url,
+)
 
 
 class ScraperInput(TypedDict):
@@ -30,11 +41,13 @@ class ScraperInput(TypedDict):
 
 
 class ScraperState(ScraperInput, total=False):
+    fetch_method: Literal["jina", "http"]
     final_url: str
     raw_html: str
     cleaned_text: str
     chunks: list[str]
     chunks_dropped: int
+    content_clipped: int  # Jina 경로 통짜 추출 시 클립으로 버린 글자 수
     chunk_results: list[Any]
     result: Any
     attempts: int
@@ -66,10 +79,12 @@ class ScraperNodes:
         model: BaseChatModel,
         config: ScraperConfig,
         fetcher: HttpFetcher | None = None,
+        jina_fetcher: JinaFetcher | None = None,
     ) -> None:
         self.model = model
         self.config = config
         self.fetcher = fetcher or HttpFetcher(config)
+        self.jina_fetcher = jina_fetcher or (JinaFetcher(config) if config.use_jina else None)
 
     def validate_request(self, state: ScraperState) -> dict[str, Any]:
         emit("validating_request", "입력값을 검증하는 중")
@@ -83,8 +98,36 @@ class ScraperNodes:
             "error": None,
         }
 
+    def fetch_via_jina(self, state: ScraperState) -> dict[str, Any]:
+        """Jina Reader 1차 경로 — 성공 시 청킹·병합 없이 통짜 추출로 직행한다."""
+        if self.jina_fetcher is None:
+            return {"fetch_method": "http"}
+        emit("fetching", "Jina Reader로 페이지를 가져오는 중", url=state["url"], method="jina")
+        try:
+            fetched = self.jina_fetcher.fetch(state["url"])
+        except Exception:
+            emit("fetching", "Jina Reader 실패 — 직접 가져오기로 전환", url=state["url"], method="http")
+            return {"fetch_method": "http"}
+
+        text = fetched.html
+        clipped = max(0, len(text) - self.config.max_single_pass_chars)
+        if clipped:
+            text = text[: self.config.max_single_pass_chars]
+        emit("chunking", "본문 준비 완료", total=1, dropped=0)
+        return {
+            "fetch_method": "jina",
+            "final_url": fetched.final_url,
+            "cleaned_text": text,
+            "chunks": [text],
+            "chunks_dropped": 0,
+            "content_clipped": clipped,
+        }
+
+    def route_after_jina(self, state: ScraperState) -> Literal["extract", "fallback"]:
+        return "extract" if state.get("fetch_method") == "jina" else "fallback"
+
     def fetch_page(self, state: ScraperState) -> dict[str, Any]:
-        emit("fetching", "페이지를 가져오는 중", url=state["url"])
+        emit("fetching", "페이지를 가져오는 중", url=state["url"], method="http")
         fetched = self.fetcher.fetch(state["url"])
         return {"raw_html": fetched.html, "final_url": fetched.final_url}
 
@@ -179,13 +222,15 @@ def build_scraper_graph(
     model: BaseChatModel,
     config: ScraperConfig | None = None,
     fetcher: HttpFetcher | None = None,
+    jina_fetcher: JinaFetcher | None = None,
 ):
     """웹 추출 서브그래프를 조립한다. 의존성은 테스트·호스팅용으로 주입 가능."""
     settings = config or ScraperConfig()
-    nodes = ScraperNodes(model, settings, fetcher=fetcher)
+    nodes = ScraperNodes(model, settings, fetcher=fetcher, jina_fetcher=jina_fetcher)
 
     builder = StateGraph(ScraperState, input_schema=ScraperInput)
     builder.add_node("validate_request", nodes.validate_request)
+    builder.add_node("fetch_via_jina", nodes.fetch_via_jina)
     builder.add_node(
         "fetch_page",
         nodes.fetch_page,
@@ -200,7 +245,12 @@ def build_scraper_graph(
     builder.add_node("fail", nodes.fail)
 
     builder.add_edge(START, "validate_request")
-    builder.add_edge("validate_request", "fetch_page")
+    builder.add_edge("validate_request", "fetch_via_jina")
+    builder.add_conditional_edges(
+        "fetch_via_jina",
+        nodes.route_after_jina,
+        {"extract": "extract_chunks", "fallback": "fetch_page"},
+    )
     builder.add_edge("fetch_page", "clean_content")
     builder.add_edge("clean_content", "chunk_content")
     builder.add_edge("chunk_content", "extract_chunks")
@@ -223,9 +273,10 @@ def make_web_extract_tool(
     model: BaseChatModel,
     config: ScraperConfig | None = None,
     fetcher: HttpFetcher | None = None,
+    jina_fetcher: JinaFetcher | None = None,
 ):
     """라우팅된 모델을 서브그래프에 묶어 web_extract 도구를 만든다."""
-    graph = build_scraper_graph(model, config=config, fetcher=fetcher)
+    graph = build_scraper_graph(model, config=config, fetcher=fetcher, jina_fetcher=jina_fetcher)
 
     @tool
     def web_extract(url: str, instruction: str) -> str:
@@ -252,6 +303,10 @@ def make_web_extract_tool(
         if state.get("chunks_dropped"):
             notes.append(
                 f"본문이 길어 앞부분만 추출함 (청크 {state['chunks_dropped']}개 미처리)"
+            )
+        if state.get("content_clipped"):
+            notes.append(
+                f"본문이 길어 앞부분만 추출함 ({state['content_clipped']:,}자 미처리)"
             )
         if len(text) > MAX_RESULT_CHARS:
             text = text[:MAX_RESULT_CHARS]
