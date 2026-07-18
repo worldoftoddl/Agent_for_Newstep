@@ -44,11 +44,15 @@ create_agent(model=model, tools=tools, system_prompt=SYSTEM_PROMPT,
   (fraction 0.75, 프로파일 미보유 모델은 anthropic 150k/local·hf 24k/기타
   100k 절대값 폴백. 요약 모델 = 라우팅된 모델).
 - `web_extract`(웹 추출)는 내부적으로 **서브그래프**를 invoke하는 도구다
-  (`web_extract.py`): validate(SSRF 차단)→fetch(재시도 3)→clean→chunk
-  →extract→merge→validate(+빈 결과 재추출 ≤2). langgraph_web_scraping_agent
+  (`web_extract.py`). fetch는 하이브리드: 1차 **Jina Reader**(r.jina.ai —
+  JS 렌더링 포함, 마크다운 반환, JINA_API_KEY 없으면 무키 20 RPM 모드)로
+  50k자 클립 후 청킹·병합 없이 통짜 1회 추출, 실패 시 기존 httpx+bs4 경로
+  (fetch 재시도 3→clean→chunk→extract→merge)로 폴백. 공통: validate(SSRF
+  차단)→…→validate(+빈 결과 재추출 ≤2). langgraph_web_scraping_agent
   이식 — 취득 계층은 `scraping/`(원본 문서 README.upstream.md).
-  상한: 청크 5개(초과분 버리고 고지)·결과 6,000자 클립·응답 2MB·리다이렉트 5회.
-  공개 http(s)만 허용 — 사설/루프백 IP는 DNS 해석 후 차단, 리다이렉트마다 재검증.
+  상한: 폴백 청크 5개(초과분 버리고 고지)·결과 6,000자 클립·응답 2MB·
+  리다이렉트 5회. 공개 http(s)만 허용 — 사설/루프백 IP는 DNS 해석 후 차단,
+  리다이렉트마다 재검증 (Jina 경로도 입구에서 같은 URL 검증 통과 필요).
 
 ### 2.2 고정 파이프라인 3종 (explainer·analyst·reviewer)
 
