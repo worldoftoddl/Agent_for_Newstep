@@ -80,16 +80,20 @@ create_agent(model=model, tools=tools, system_prompt=SYSTEM_PROMPT,
 감사기준서 315의 "기업과 기업환경 이해" 활동을 공개 웹 자료로 보조한다:
 
 - 흐름: triage(브리핑/대화) → plan(LLM이 회사명·초점 파싱, URL은 코드
-  정규식 추출) → gather(사용자 제공 URL 우선, JINA_API_KEY 있으면
-  s.jina.ai 검색으로 보충 — 질의 3~4종, 도메인 중복 배제, 자료 4건 상한)
-  → extract(웹 추출 서브그래프 재사용, 자료당 LLM 1회·결과 5k자 클립)
-  → analyze(구조화 CompanyProfile — 산업·사업·재무·이슈·위험 후보·이해
-  갭, 위험 후보에 영향 계정·경영진 주장 명시) → cite(resolve_citation
-  재사용, ≤8건) → report(결정적 템플릿 ①~⑧ + 조사 자료 + 근거 목록 +
-  "감사증거 아님" 고지).
-- LLM 상한: triage 1 + plan 1 + extract ≤4 + analyze ≤2 = 최대 8회.
-- 검색 키 없고 URL도 없으면 fail 노드가 발급·URL 첨부 안내를 돌려준다
-  (우아한 강등 — 사용자 제공 URL 경로는 무키로도 완전 동작).
+  정규식 추출) → dart(상장·공시 대상이면 OpenDART로 기업개황·주요
+  재무계정 3개년·최근 90일 공시 수집 — 비LLM, `dart_client.py`,
+  corpCode 매핑은 프로세스 수명 캐시) → gather(사용자 제공 URL 우선,
+  JINA_API_KEY 있으면 s.jina.ai 검색으로 보충 — 질의 3~4종, 도메인 중복
+  배제, 자료 4건 상한; 웹 자료 없이 DART만 있으면 extract 생략하고
+  analyze 직행) → extract(웹 추출 서브그래프 재사용, 자료당 LLM 1회·결과
+  5k자 클립) → analyze(구조화 CompanyProfile — DART 수치를 공식 원천으로
+  우선, 상충은 명시; 위험 후보에 영향 계정·경영진 주장 명시) →
+  cite(resolve_citation 재사용, ≤8건) → report(결정적 템플릿 ①~⑧ +
+  조사 자료(DART 첫 줄) + 근거 목록 + "감사증거 아님" 고지).
+- LLM 상한: triage 1 + plan 1 + extract ≤4 + analyze ≤2 = 최대 8회
+  (dart 노드는 LLM 0회).
+- 우아한 강등 사다리: DART 키·검색 키·URL이 전부 없을 때만 fail 안내.
+  DART만 있어도, URL만 있어도, 검색 키만 있어도 각각 동작한다.
 
 ## 3. 모델 라우팅 (벤더 5종)
 
