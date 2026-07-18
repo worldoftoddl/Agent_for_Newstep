@@ -4,7 +4,8 @@
         "agent": "./src/agent/graph.py:graph",
         "explainer": "./src/agent/explainer.py:explainer",
         "analyst": "./src/agent/analyst.py:analyst",
-        "reviewer": "./src/agent/reviewer.py:reviewer"
+        "reviewer": "./src/agent/reviewer.py:reviewer",
+        "profiler": "./src/agent/profiler.py:profiler"
     },
     "env": "./.env",
     "python_version": "3.12"

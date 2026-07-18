@@ -48,6 +48,17 @@ export const GRAPH_META: Record<string, GraphMeta> = {
       "'데모_부서별 예산집행 현황' 파일에서 부서별 집행률을 계산해줘.",
     ],
   },
+  profiler: {
+    displayName: "기업이해 Agent",
+    description:
+      "감사 착수 전에 확보해야 할 회사 이해를 공개 웹 자료로 브리핑합니다 — " +
+      "산업·사업·재무·최근 이슈와 유의적 위험 후보까지. 회사명이나 조사할 URL을 알려주세요.",
+    starters: [
+      "https://ko.wikipedia.org/wiki/네이버 자료를 바탕으로 네이버 기업이해 브리핑을 만들어줘.",
+      "삼성전자에 대해 감사 착수 전 기업이해 브리핑을 만들어줘.",
+      "카카오의 최근 이슈와 유의적 위험 후보를 정리해줘.",
+    ],
+  },
   reviewer: {
     displayName: "조서 검토 Agent",
     description:

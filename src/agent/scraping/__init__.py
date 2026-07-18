@@ -6,6 +6,7 @@
 from .config import ScraperConfig
 from .http_fetcher import FetchResult, HttpFetcher
 from .jina_fetcher import JinaFetcher
+from .jina_search import JinaSearcher, SearchHit
 from .processing import html_to_text, split_text
 from .security import UnsafeUrlError, validate_public_url
 
@@ -13,7 +14,9 @@ __all__ = [
     "FetchResult",
     "HttpFetcher",
     "JinaFetcher",
+    "JinaSearcher",
     "ScraperConfig",
+    "SearchHit",
     "UnsafeUrlError",
     "html_to_text",
     "split_text",

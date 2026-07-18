@@ -9,6 +9,7 @@ import pytest
 from agent.scraping import (
     HttpFetcher,
     JinaFetcher,
+    JinaSearcher,
     ScraperConfig,
     UnsafeUrlError,
     html_to_text,
@@ -227,3 +228,51 @@ def test_jina_fetch_rejects_oversized_response(monkeypatch):
 
     with pytest.raises(ValueError, match="size limit"):
         fetcher.fetch("https://example.com/big")
+
+
+# --- jina_search ---
+
+
+def test_jina_search_requires_key():
+    searcher = JinaSearcher(ScraperConfig(), api_key="")
+    assert not searcher.available
+    with pytest.raises(ValueError, match="JINA_API_KEY"):
+        searcher.search("삼성전자")
+
+
+def test_jina_search_parses_hits_and_sends_key(monkeypatch):
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("authorization")
+        seen["respond_with"] = request.headers.get("x-respond-with")
+        return httpx.Response(
+            200,
+            json={
+                "code": 200,
+                "data": [
+                    {"title": "A", "url": "https://a.example.com/", "description": "요약A"},
+                    {"title": "무URL", "url": "", "description": "버림"},
+                    {"title": "B", "url": "https://b.example.com/", "description": "요약B"},
+                    {"title": "C", "url": "https://c.example.com/", "description": "요약C"},
+                ],
+            },
+        )
+
+    config = ScraperConfig()
+    searcher = JinaSearcher(config, api_key="jina_key")
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.Client
+
+    class PatchedClient(original_client):
+        def __init__(self, **kwargs):
+            super().__init__(transport=transport, **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", PatchedClient)
+
+    hits = searcher.search("네이버 최근 이슈", max_results=2)
+
+    assert [h.url for h in hits] == ["https://a.example.com/", "https://b.example.com/"]
+    assert hits[0].snippet == "요약A"
+    assert seen["auth"] == "Bearer jina_key"
+    assert seen["respond_with"] == "no-content"
