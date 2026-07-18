@@ -135,7 +135,7 @@ def test_plan_extracts_urls_in_code_and_company_via_llm():
     assert update["company"] == "네이버"
     assert update["focus"] == "최근 소송"
     assert update["provided_urls"] == ["https://ko.wikipedia.org/wiki/네이버"]
-    assert nodes.route_plan(update) == "gather"
+    assert nodes.route_plan(update) == "dart"
 
 
 def test_plan_without_company_or_url_fails_with_guidance():

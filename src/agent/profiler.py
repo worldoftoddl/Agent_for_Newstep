@@ -4,10 +4,12 @@
 자료로 보조하는 고정 워크플로:
 
   triage(브리핑/대화 분기) → plan(회사명·초점 파싱, URL은 코드 추출)
-  → gather(자료 URL 확정 — 사용자 제공 URL 우선, JINA_API_KEY 있으면
-  s.jina.ai 검색으로 보충) → extract(웹 추출 서브그래프 재사용, URL당
-  LLM 1회) → analyze(LLM 구조화 프로파일) → cite(감사기준 근거 확정, MCP)
-  → report(결정적 템플릿 렌더)
+  → dart(상장·공시 대상이면 OpenDART 공식 공시 수집 — 기업개황·주요
+  재무계정·최근 공시, 비LLM) → gather(웹 자료 URL 확정 — 사용자 제공
+  URL 우선, JINA_API_KEY 있으면 s.jina.ai 검색으로 보충; 웹 자료 없이
+  DART만 있으면 extract 생략) → extract(웹 추출 서브그래프 재사용, URL당
+  LLM 1회) → analyze(LLM 구조화 프로파일 — DART 수치를 공식 원천으로
+  우선) → cite(감사기준 근거 확정, MCP) → report(결정적 템플릿 렌더)
 
 산출물은 산업·규제 환경 / 사업의 성격 / 재무 하이라이트 / 최근 이슈 /
 유의적 위험 후보(경영진 주장·기준서 근거) / 추가 확인 필요사항 — 즉
@@ -20,8 +22,9 @@
 
 import asyncio
 import re
+from datetime import date, timedelta
 from typing import Any, Literal
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from langchain_core.messages import (
     AIMessage,
@@ -35,6 +38,7 @@ from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated, TypedDict
 
+from agent.dart_client import DartClient
 from agent.graph import DEFAULT_MODEL, resolve_model
 from agent.graph_common import conversation_context, emit, human_texts_newest_first
 from agent.mcp_client import get_standards_tools
@@ -160,11 +164,49 @@ class ProfilerState(TypedDict, total=False):
     company: str
     focus: str
     provided_urls: list  # 사용자가 메시지에 적은 URL
-    sources: list  # [{"url", "title"}] 추출 대상으로 확정된 자료
+    dart_evidence: str  # DART 공시 요약 (상장·공시 대상 기업일 때)
+    dart_source: dict  # 조사 자료 목록에 표기할 DART 출처
+    sources: list  # [{"url", "title"}] 웹 추출 대상으로 확정된 자료
     extracts: list  # [{"url", "text"}] 자료별 추출 결과
     profile: dict
     attempts: int
     error: str | None
+
+
+def _format_dart_evidence(
+    info: dict, year: int | None, rows: list[dict], disclosures: list[dict]
+) -> str:
+    """OpenDART 응답을 LLM 증거 텍스트로 렌더한다 (비LLM, 결정적)."""
+    market = {"Y": "유가증권시장 상장", "K": "코스닥 상장", "N": "코넥스 상장"}.get(
+        info.get("corp_cls", ""), "비상장/기타"
+    )
+    parts = [
+        "[기업개황]",
+        f"- 회사명: {info.get('corp_name', '')} ({market}"
+        + (f", 종목코드 {info['stock_code']}" if info.get("stock_code") else "")
+        + ")",
+        f"- 대표이사: {info.get('ceo_nm', '')} / 설립일: {info.get('est_dt', '')} / 결산월: {info.get('acc_mt', '')}월",
+        f"- 주소: {info.get('adres', '')}",
+    ]
+    if rows:
+        parts.append("")
+        parts.append(f"[주요 재무계정 — {year}년 사업보고서 기준, 단위: 원]")
+        for row in rows:
+            terms = " / ".join(
+                f"{row.get(f'{k}_nm', '')} {row.get(f'{k}_amount', '')}"
+                for k in ("thstrm", "frmtrm", "bfefrmtrm")
+                if row.get(f"{k}_amount")
+            )
+            parts.append(f"- {row.get('account_nm', '')}: {terms}")
+    if disclosures:
+        parts.append("")
+        parts.append("[최근 90일 공시]")
+        for item in disclosures:
+            parts.append(
+                f"- {item.get('rcept_dt', '')} {item.get('report_nm', '')}"
+                f" (제출: {item.get('flr_nm', '')})"
+            )
+    return "\n".join(parts)
 
 
 def _render_profile(
@@ -255,10 +297,11 @@ def _render_profile(
 
 
 class ProfilerNodes:
-    def __init__(self, model, searcher=None, scraper=None) -> None:
+    def __init__(self, model, searcher=None, scraper=None, dart=None) -> None:
         self.model = model
         self.searcher = searcher or JinaSearcher(ScraperConfig())
         self.scraper = scraper or build_scraper_graph(model)
+        self.dart = dart or DartClient()
 
     def triage(self, state: ProfilerState) -> dict[str, Any]:
         """브리핑 요청인지 일반 대화인지 분기한다 (explainer/reviewer와 동일 패턴)."""
@@ -426,8 +469,55 @@ class ProfilerNodes:
             "error": None,
         }
 
-    def route_plan(self, state: ProfilerState) -> Literal["gather", "fail"]:
-        return "fail" if state.get("error") else "gather"
+    def route_plan(self, state: ProfilerState) -> Literal["dart", "fail"]:
+        return "fail" if state.get("error") else "dart"
+
+    def dart_fetch(self, state: ProfilerState) -> dict[str, Any]:
+        """상장·공시 대상이면 DART 공식 공시를 재무 백본으로 수집한다.
+
+        키 없음·비상장·조회 실패 등 어떤 경우에도 브리핑을 중단시키지
+        않는다 — 공시 없이 웹 자료만으로 진행한다 (우아한 강등).
+        """
+        company = state.get("company", "")
+        if not self.dart.available or not company or company == "(회사명 미상)":
+            return {}
+        try:
+            corp = self.dart.find_corp(company)
+            if corp is None:
+                return {}
+            label = corp.corp_name + (f"({corp.stock_code})" if corp.listed else "")
+            emit("dart", f"DART 공시 수집 중: {label}")
+            info = self.dart.company(corp.corp_code)
+            rows, used_year = [], None
+            this_year = date.today().year
+            for year in (this_year - 1, this_year - 2):
+                try:
+                    rows = self.dart.finstate(corp.corp_code, year)
+                except ValueError:
+                    rows = []
+                if rows:
+                    used_year = year
+                    break
+            begin = (date.today() - timedelta(days=90)).strftime("%Y%m%d")
+            try:
+                disclosures = self.dart.recent_disclosures(corp.corp_code, begin)
+            except ValueError:
+                disclosures = []
+            evidence = _format_dart_evidence(info, used_year, rows, disclosures)
+            emit("dart", f"DART 공시 수집 완료: 재무계정 {len(rows)}건·공시 {len(disclosures)}건")
+            return {
+                "dart_evidence": evidence[:MAX_EXTRACT_CHARS],
+                "dart_source": {
+                    "url": (
+                        "https://dart.fss.or.kr/dsab007/main.do?option=corp"
+                        f"&textCrpNm={quote(corp.corp_name)}"
+                    ),
+                    "title": f"금융감독원 DART 전자공시 — {corp.corp_name} (OpenDART)",
+                },
+            }
+        except Exception:
+            emit("dart", "DART 공시 수집 실패 — 웹 자료만으로 진행")
+            return {}
 
     def gather(self, state: ProfilerState) -> dict[str, Any]:
         """조사 자료 URL을 확정한다 — 사용자 제공 URL 우선, 검색으로 보충."""
@@ -464,12 +554,17 @@ class ProfilerNodes:
                     if remaining <= 0:
                         break
         if not sources:
+            if state.get("dart_evidence"):
+                emit("gathering", "웹 자료 없음 — DART 공시만으로 진행")
+                return {"sources": [], "error": None}
             return {"error": NO_SOURCE_MESSAGE}
         emit("gathering", f"조사 자료 {len(sources)}건 확정")
         return {"sources": sources, "error": None}
 
-    def route_gather(self, state: ProfilerState) -> Literal["extract", "fail"]:
-        return "fail" if state.get("error") else "extract"
+    def route_gather(self, state: ProfilerState) -> Literal["extract", "analyze", "fail"]:
+        if state.get("error"):
+            return "fail"
+        return "extract" if state.get("sources") else "analyze"
 
     def extract(self, state: ProfilerState) -> dict[str, Any]:
         """확정된 자료를 웹 추출 서브그래프로 읽는다 (자료당 LLM 1회)."""
@@ -519,10 +614,16 @@ class ProfilerNodes:
         attempt = state.get("attempts", 0) + 1
         emit("analyzing", "수집 자료로 기업 프로파일을 작성하는 중", attempt=attempt)
         company = state.get("company", "")
-        evidence = "\n\n".join(
+        parts = []
+        if state.get("dart_evidence"):
+            parts.append(
+                f"[자료 0: 금융감독원 DART 전자공시 (공식 원천)]\n{state['dart_evidence']}"
+            )
+        parts += [
             f"[자료 {i}: {e['url']}]\n{e['text']}"
-            for i, e in enumerate(state["extracts"], start=1)
-        )
+            for i, e in enumerate(state.get("extracts") or [], start=1)
+        ]
+        evidence = "\n\n".join(parts)
         analyzer = self.model.with_structured_output(CompanyProfile)
         try:
             result = analyzer.invoke(
@@ -532,7 +633,9 @@ class ProfilerNodes:
                             "당신은 회계법인의 시니어로서 감사 착수 전 기업이해 "
                             "브리핑을 작성합니다. 제공된 수집 자료만 사용하고, "
                             "자료에 없는 내용을 추정하지 마세요. 수치는 기간을 "
-                            "병기하고, 자료 간 상충은 그대로 적으세요. 관점: "
+                            "병기하고, 자료 간 상충은 그대로 적으세요. DART "
+                            "공시 수치는 공식 원천입니다 — 웹 자료와 상충하면 "
+                            "공시를 우선하되 상충 사실을 명시하세요. 관점: "
                             "모든 항목을 '이 사실이 재무제표 왜곡표시 위험에 "
                             "어떤 함의를 갖는가'로 연결하세요 — 특히 "
                             "risk_candidates에는 영향받는 계정과 경영진 주장을 "
@@ -598,10 +701,13 @@ class ProfilerNodes:
     def report(self, state: ProfilerState) -> dict[str, Any]:
         emit("reporting", "기업이해 브리핑을 작성하는 중")
         profile = CompanyProfile.model_validate(state["profile"])
+        sources = list(state.get("sources") or [])
+        if state.get("dart_source"):
+            sources.insert(0, state["dart_source"])
         text = _render_profile(
             state.get("company", ""),
             profile,
-            state.get("sources", []),
+            sources,
             state.get("focus", ""),
         )
         emit("complete", "기업이해 브리핑 완료")
@@ -619,6 +725,7 @@ def build_profiler_graph(nodes: ProfilerNodes):
     builder.add_node("triage", nodes.triage)
     builder.add_node("chat", nodes.chat)
     builder.add_node("plan", nodes.plan)
+    builder.add_node("dart", nodes.dart_fetch)
     builder.add_node("gather", nodes.gather)
     builder.add_node("extract", nodes.extract)
     builder.add_node("analyze", nodes.analyze)
@@ -632,10 +739,13 @@ def build_profiler_graph(nodes: ProfilerNodes):
     )
     builder.add_edge("chat", END)
     builder.add_conditional_edges(
-        "plan", nodes.route_plan, {"gather": "gather", "fail": "fail"}
+        "plan", nodes.route_plan, {"dart": "dart", "fail": "fail"}
     )
+    builder.add_edge("dart", "gather")
     builder.add_conditional_edges(
-        "gather", nodes.route_gather, {"extract": "extract", "fail": "fail"}
+        "gather",
+        nodes.route_gather,
+        {"extract": "extract", "analyze": "analyze", "fail": "fail"},
     )
     builder.add_conditional_edges(
         "extract", nodes.route_extract, {"analyze": "analyze", "fail": "fail"}
