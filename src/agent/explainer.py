@@ -94,6 +94,21 @@ class ProcedureNote(BaseModel):
     interpretation: str = Field(
         description="이 절차를 왜 하는지, 조서에서 어떻게 수행됐는지 신입 눈높이 해설"
     )
+    assertion: str = Field(
+        default="",
+        description=(
+            "이 절차가 다루는 경영진 주장 — 존재성·완전성·평가와 배분(정확성)·"
+            "권리와 의무·발생사실·기간귀속·표시와 공시 중 해당하는 것 "
+            "(여러 개면 쉼표 구분). 주장과 무관한 서식 안내면 빈 문자열"
+        ),
+    )
+    risk_addressed: str = Field(
+        default="",
+        description=(
+            "이 절차가 없으면 무엇이 잘못될 수 있는지 — 대응하는 왜곡표시 위험 "
+            "한 줄 (예: '실재하지 않는 매출채권이 장부에 남는다')"
+        ),
+    )
     standards_query: str = Field(
         default="",
         description=(
@@ -198,7 +213,18 @@ def _render_brief(
     ]
     if brief.performed_procedures:
         for note in brief.performed_procedures:
-            line = f"- **{note.procedure}** ({note.location})\n  {note.interpretation}"
+            line = f"- **{note.procedure}** ({note.location})"
+            tags = " · ".join(
+                t
+                for t in (
+                    f"주장: {note.assertion}" if note.assertion else "",
+                    f"대응 위험: {note.risk_addressed}" if note.risk_addressed else "",
+                )
+                if t
+            )
+            if tags:
+                line += f"\n  _{tags}_"
+            line += f"\n  {note.interpretation}"
             if note.citation:
                 line += f"\n  근거: {note.citation}"
             lines.append(line)
@@ -502,7 +528,14 @@ class ExplainerNodes:
                             "근거 위치는 셀 좌표만 나열하면 신입이 알아듣지 "
                             "못합니다 — '어느 시트의 무엇(셀주소)'처럼 그 위치가 "
                             "무엇인지 설명하고 좌표는 괄호로 붙이세요. 빈 서식이면 "
-                            "각 칸에 무엇을 채워야 하는지를 해설하세요. 기준서 "
+                            "각 칸에 무엇을 채워야 하는지를 해설하세요. 해설의 "
+                            "관점: 각 절차를 '경영진 주장 → 위험 → 절차 → 증거' "
+                            "사슬로 설명하세요 — assertion에 절차가 다루는 주장을, "
+                            "risk_addressed에 이 절차가 없으면 무엇이 잘못될 수 "
+                            "있는지를 채우고, interpretation은 그 주장·위험과 "
+                            "연결해 서술하세요. 관찰 나열('B5에 합계가 있다')이 "
+                            "아니라 목적 설명('매출채권의 실재성을 확인하기 위해 "
+                            "…')이 되어야 합니다. 기준서 "
                             "번호를 본문에 직접 인용하지 말고, 근거가 필요한 "
                             "절차에는 standards_query(한국어 검색어)와 source_hint를 "
                             "채우세요 — 원문 확인과 인용 확정은 시스템이 수행합니다."

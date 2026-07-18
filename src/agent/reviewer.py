@@ -98,6 +98,21 @@ class Finding(BaseModel):
         )
     )
     detail: str = Field(description="무엇이 왜 문제/필요한지 신입 회계사가 이해할 설명")
+    assertion: str = Field(
+        default="",
+        description=(
+            "이 소견과 관련된 경영진 주장 — 존재성·완전성·평가와 배분(정확성)·"
+            "권리와 의무·발생사실·기간귀속·표시와 공시 중 해당하는 것 "
+            "(여러 개면 쉼표 구분). 주장과 무관한 형식적 소견이면 빈 문자열"
+        ),
+    )
+    risk_if_unresolved: str = Field(
+        default="",
+        description=(
+            "이 소견이 해결되지 않으면 어떤 왜곡표시 위험이 남는지 한 줄 "
+            "(예: '회수 불확실한 채권이 과대계상된 채 남는다')"
+        ),
+    )
     standards_query: str = Field(
         default="",
         description=(
@@ -170,7 +185,22 @@ def _render_report(
         order = {"높음": 0, "중간": 1, "낮음": 2}
         lines = []
         for f in sorted(items, key=lambda f: order[f.severity]):
-            line = f"- [{f.severity}] {f.title} ({f.location})\n  {f.detail}"
+            line = f"- [{f.severity}] {f.title} ({f.location})"
+            tags = " · ".join(
+                t
+                for t in (
+                    f"주장: {f.assertion}" if f.assertion else "",
+                    (
+                        f"미해결 시 위험: {f.risk_if_unresolved}"
+                        if f.risk_if_unresolved
+                        else ""
+                    ),
+                )
+                if t
+            )
+            if tags:
+                line += f"\n  _{tags}_"
+            line += f"\n  {f.detail}"
             if f.citation:
                 line += f"\n  근거: {f.citation}"
             lines.append(line)
@@ -504,7 +534,12 @@ class ReviewerNodes:
                             "위치가 무엇인지 설명하고 좌표는 괄호로 붙이세요 "
                             "(예: '5410 조회서 시트의 회신 대기 5건 행(D8:D12)'). "
                             "수식 지도의 하드코딩 숫자는 오류일 수도 의도된 입력일 수도 "
-                            "있으니 맥락으로 판단하되 단정하지 마세요. 기준서 번호를 "
+                            "있으니 맥락으로 판단하되 단정하지 마세요. 소견의 관점: "
+                            "각 소견에 assertion(관련 경영진 주장)과 "
+                            "risk_if_unresolved(미해결 시 남는 왜곡표시 위험)를 채워 "
+                            "'무엇이 빠졌다'가 아니라 '어떤 주장이 입증되지 않은 채 "
+                            "남는가'로 평가하고, 심각도는 그 위험의 크기로 매기세요. "
+                            "기준서 번호를 "
                             "본문에 직접 인용하지 말고, 기준서 근거가 필요한 소견에는 "
                             "standards_query(한국어 검색어)와 source_hint를 채우세요 — "
                             "원문 확인과 인용 확정은 시스템이 수행합니다."

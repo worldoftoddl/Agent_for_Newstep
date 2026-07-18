@@ -128,7 +128,14 @@ def test_render_report_sections_and_severity_order():
         performed_procedures=["실사 대사"],
         missing_procedures=[
             Finding(title="낮음건", severity="낮음", location="5100!A1", detail="d"),
-            Finding(title="높음건", severity="높음", location="5100!C9", detail="d"),
+            Finding(
+                title="높음건",
+                severity="높음",
+                location="5100!C9",
+                detail="d",
+                assertion="완전성",
+                risk_if_unresolved="누락된 부채가 계상되지 않은 채 남는다",
+            ),
         ],
         signoff_assessment="작성 완료, 검토 서명 공란",
         tieout_findings=[],
@@ -143,6 +150,7 @@ def test_render_report_sections_and_severity_order():
     assert out.index("높음건") < out.index("낮음건")  # 심각도 정렬
     assert "- (해당 없음)" in out  # 빈 섹션 표기
     assert "기계 수집 증거" in out  # 한계 고지
+    assert "_주장: 완전성 · 미해결 시 위험: 누락된 부채가 계상되지 않은 채 남는다_" in out
 
 
 class _StubInvestigateModel:

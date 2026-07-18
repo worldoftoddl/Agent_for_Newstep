@@ -52,6 +52,8 @@ def _sample_brief() -> WorkpaperBrief:
                 procedure="현금 실사 대사",
                 location=f"{SHEET} 시트의 실사 대사표(A5:C7)",
                 interpretation="장부금액과 실사금액을 항목별로 비교한다",
+                assertion="존재성",
+                risk_addressed="실재하지 않는 현금이 장부에 남는다",
                 standards_query="현금 실사 감사증거",
                 source_hint="감사기준",
             )
@@ -104,6 +106,7 @@ def test_render_brief_sections_and_citation(explain_dir):
     assert "근거: 감사기준서 501 문단 A1" in out
     assert "`KSA::501::A1`" in out
     assert "**실사**: 자산을 직접 확인하는 절차" in out
+    assert "_주장: 존재성 · 대응 위험: 실재하지 않는 현금이 장부에 남는다_" in out
 
 
 def test_brief_coerces_weak_model_strings():
