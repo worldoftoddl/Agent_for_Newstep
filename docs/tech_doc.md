@@ -7,7 +7,7 @@
 | 계층 | 선택 | 비고 |
 |---|---|---|
 | 언어 | Python 3.12 | |
-| 에이전트 | langchain 1.x (`create_agent`) + langgraph StateGraph | 그래프 4종 (agent·explainer·analyst·reviewer) |
+| 에이전트 | langchain 1.x (`create_agent`) + langgraph StateGraph | 그래프 5종 (agent·explainer·analyst·reviewer·profiler) |
 | 서버/런타임 | langgraph + langgraph-cli | `langgraph dev --host 0.0.0.0` → :2024 (WSL2는 호스트 바인딩 필수) |
 | MCP 연동 | langchain-mcp-adapters | HTTP+Bearer 기본 / stdio 로컬 옵션 |
 | Excel | openpyxl | 수식·서식·병합 셀·주석 접근 |
@@ -54,7 +54,7 @@ LangChain 계열은 API 변화가 잦으므로 구현 전 docs.langchain.com 실
 ## 4. 실행 방법 (현행)
 
 ```bash
-# 백엔드 — 그래프 4종 서빙
+# 백엔드 — 그래프 5종 서빙
 .venv/bin/python -m langgraph_cli dev --no-browser --host 0.0.0.0 --port 2024
 
 # UI

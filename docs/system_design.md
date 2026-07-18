@@ -1,7 +1,7 @@
 # 시스템 설계 — Agent for Newstep (구 ExcelBrief for Newsteps)
 
 > 상세 흐름·인터페이스·데이터 계약. 구성요소 개관은 [architecture.md](architecture.md) 참조.
-> 2026-07-17 현행화 — 그래프 4종·공용 계층·업로드 반영.
+> 2026-07-18 현행화 — 그래프 5종(기업이해 추가)·공용 계층·업로드 반영.
 
 ## 1. 핵심 흐름 — 조서 해석 요청
 
@@ -21,9 +21,9 @@
   ▼ SSE 스트리밍으로 UI에 토큰 단위 전달
 ```
 
-## 2. 그래프 정의 — 4종
+## 2. 그래프 정의 — 5종
 
-`langgraph.json`이 그래프 4종의 팩토리를 등록한다. 모두
+`langgraph.json`이 그래프 5종의 팩토리를 등록한다. 모두
 `config["configurable"]["model"]`로 요청마다 모델을 라우팅한다.
 
 ### 2.1 agent (All-in-One) — create_agent ReAct
@@ -75,6 +75,22 @@ create_agent(model=model, tools=tools, system_prompt=SYSTEM_PROMPT,
   보고서는 템플릿 렌더라 토큰 스트리밍이 구조적으로 불가(설계상 수용) —
   analyst의 answer만 LLM 호출이라 토큰이 흐른다.
 
+### 2.3 profiler (기업이해) — 감사 착수 전 회사 이해 브리핑
+
+감사기준서 315의 "기업과 기업환경 이해" 활동을 공개 웹 자료로 보조한다:
+
+- 흐름: triage(브리핑/대화) → plan(LLM이 회사명·초점 파싱, URL은 코드
+  정규식 추출) → gather(사용자 제공 URL 우선, JINA_API_KEY 있으면
+  s.jina.ai 검색으로 보충 — 질의 3~4종, 도메인 중복 배제, 자료 4건 상한)
+  → extract(웹 추출 서브그래프 재사용, 자료당 LLM 1회·결과 5k자 클립)
+  → analyze(구조화 CompanyProfile — 산업·사업·재무·이슈·위험 후보·이해
+  갭, 위험 후보에 영향 계정·경영진 주장 명시) → cite(resolve_citation
+  재사용, ≤8건) → report(결정적 템플릿 ①~⑧ + 조사 자료 + 근거 목록 +
+  "감사증거 아님" 고지).
+- LLM 상한: triage 1 + plan 1 + extract ≤4 + analyze ≤2 = 최대 8회.
+- 검색 키 없고 URL도 없으면 fail 노드가 발급·URL 첨부 안내를 돌려준다
+  (우아한 강등 — 사용자 제공 URL 경로는 무키로도 완전 동작).
+
 ## 3. 모델 라우팅 (벤더 5종)
 
 | 라우트 키 (`configurable.model`) | 해석 |
@@ -85,7 +101,7 @@ create_agent(model=model, tools=tools, system_prompt=SYSTEM_PROMPT,
 | `hf:<org/model>` | HF Inference Providers 라우터 (OpenAI 호환, HF_INFERENCE_TOKEN) |
 | `local:<model-name>` | 로컬 OpenAI 호환 서버 (Ollama :11434/v1, qwen3:8b-16k) |
 
-- `resolve_model()`이 접두사로 분기, 4개 그래프 공용. max_tokens 8192.
+- `resolve_model()`이 접두사로 분기, 5개 그래프 공용. max_tokens 8192.
 - UI 모델 드롭다운은 `ui/src/lib/models.ts` 레지스트리를 `/api/models`로 받아
   벤더 키가 설정된 모델만 노출, 전송 시 `configurable.model` 주입.
 
