@@ -11,6 +11,7 @@ from agent.scraping import (
     JinaFetcher,
     JinaSearcher,
     ScraperConfig,
+    TavilySearcher,
     UnsafeUrlError,
     html_to_text,
     split_text,
@@ -276,3 +277,51 @@ def test_jina_search_parses_hits_and_sends_key(monkeypatch):
     assert hits[0].snippet == "요약A"
     assert seen["auth"] == "Bearer jina_key"
     assert seen["respond_with"] == "no-content"
+
+
+# --- tavily_search ---
+
+
+def test_tavily_requires_key():
+    searcher = TavilySearcher(ScraperConfig(), api_key="")
+    assert not searcher.available
+    with pytest.raises(ValueError, match="TAVILY_API_KEY"):
+        searcher.search("삼성전자")
+
+
+def test_tavily_parses_results_and_news_topic(monkeypatch):
+    import json as jsonlib
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("authorization")
+        seen["body"] = jsonlib.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"title": "파업 뉴스", "url": "https://news.example.com/1",
+                     "content": "본문 발췌"},
+                    {"title": "무URL", "url": "", "content": "버림"},
+                ]
+            },
+        )
+
+    searcher = TavilySearcher(ScraperConfig(), api_key="tvly_key")
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.Client
+
+    class PatchedClient(original_client):
+        def __init__(self, **kwargs):
+            super().__init__(transport=transport, **kwargs)
+
+    monkeypatch.setattr(httpx, "Client", PatchedClient)
+
+    hits = searcher.search("삼성전자 이슈", max_results=3, topic="news")
+
+    assert len(hits) == 1
+    assert hits[0].snippet == "본문 발췌"
+    assert seen["auth"] == "Bearer tvly_key"
+    assert seen["body"]["topic"] == "news"
+    assert seen["body"]["days"] == 90  # news면 최근 90일 한정

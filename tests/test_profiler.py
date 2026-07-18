@@ -35,14 +35,14 @@ class FakeSearcher:
     def __init__(self, hits=None, available=True):
         self.hits = hits or []
         self._available = available
-        self.queries = []
+        self.queries = []  # [(query, topic)]
 
     @property
     def available(self):
         return self._available
 
-    def search(self, query, max_results=5):
-        self.queries.append(query)
+    def search(self, query, max_results=5, topic="general"):
+        self.queries.append((query, topic))
         return self.hits[:max_results]
 
 
@@ -167,19 +167,22 @@ def test_gather_without_urls_and_without_key_fails_with_guidance():
 
 def test_gather_search_diversifies_domains_and_caps_sources():
     hits = [
-        SearchHit(title="a", url="https://news.example.com/1", snippet=""),
-        SearchHit(title="b", url="https://news.example.com/2", snippet=""),  # 같은 도메인
+        SearchHit(title="a", url="https://news.example.com/1", snippet="발췌1"),
+        SearchHit(title="b", url="https://news.example.com/2", snippet="발췌2"),  # 같은 도메인
         SearchHit(title="c", url="https://ir.example.org/3", snippet=""),
         SearchHit(title="d", url="https://blog.example.net/4", snippet=""),
         SearchHit(title="e", url="https://extra.example.io/5", snippet=""),
     ]
-    nodes = ProfilerNodes(
-        model=FakeModel(), searcher=FakeSearcher(hits=hits), scraper=FakeScraper()
-    )
+    searcher = FakeSearcher(hits=hits)
+    nodes = ProfilerNodes(model=FakeModel(), searcher=searcher, scraper=FakeScraper())
     update = nodes.gather({"company": "삼성전자", "provided_urls": []})
     urls = [s["url"] for s in update["sources"]]
     assert len(urls) == 4  # MAX_SOURCES 상한
-    assert "https://news.example.com/2" not in urls  # 도메인 중복 배제
+    assert "https://news.example.com/2" not in urls  # 정독 대상은 도메인 중복 배제
+    # 발췌는 정독 대상이 아니어도(같은 도메인이어도) 폭 보완 증거로 수집
+    assert "발췌2" in update["search_snippets"]
+    # 최근 이슈 질의는 news topic으로 나간다
+    assert ("삼성전자 최근 이슈 소송 규제", "news") in searcher.queries
 
 
 def test_extract_records_failures_and_clips():

@@ -42,13 +42,15 @@ from agent.dart_client import DartClient
 from agent.graph import DEFAULT_MODEL, resolve_model
 from agent.graph_common import conversation_context, emit, human_texts_newest_first
 from agent.mcp_client import get_standards_tools
-from agent.scraping import JinaSearcher, ScraperConfig
+from agent.scraping import JinaSearcher, ScraperConfig, TavilySearcher
 from agent.standards_lookup import resolve_citation, tool_text
 from agent.web_extract import build_scraper_graph
 
 MAX_SOURCES = 4  # 추출할 자료 수 = extract 단계 LLM 호출 상한
 MAX_EXTRACT_CHARS = 5_000  # 자료당 추출 결과 클립
 MAX_SEARCH_RESULTS = 5  # 검색 질의당 수집 상한
+MAX_SNIPPET_CHARS = 400  # 검색 발췌 1건 클립
+MAX_SNIPPETS_TOTAL_CHARS = 4_000  # 검색 발췌 총량 클립
 MAX_ANALYZE_ATTEMPTS = 2
 MAX_CITED_RISKS = 8
 
@@ -166,6 +168,7 @@ class ProfilerState(TypedDict, total=False):
     provided_urls: list  # 사용자가 메시지에 적은 URL
     dart_evidence: str  # DART 공시 요약 (상장·공시 대상 기업일 때)
     dart_source: dict  # 조사 자료 목록에 표기할 DART 출처
+    search_snippets: str  # 검색 결과 발췌 — 정독 안 한 자료의 폭 보완
     sources: list  # [{"url", "title"}] 웹 추출 대상으로 확정된 자료
     extracts: list  # [{"url", "text"}] 자료별 추출 결과
     profile: dict
@@ -299,7 +302,12 @@ def _render_profile(
 class ProfilerNodes:
     def __init__(self, model, searcher=None, scraper=None, dart=None) -> None:
         self.model = model
-        self.searcher = searcher or JinaSearcher(ScraperConfig())
+        if searcher is None:
+            # Tavily 우선 — 결과에 본문 발췌가 실려 와 검색 자체가 증거가 된다
+            config = ScraperConfig()
+            tavily = TavilySearcher(config)
+            searcher = tavily if tavily.available else JinaSearcher(config)
+        self.searcher = searcher
         self.scraper = scraper or build_scraper_graph(model)
         self.dart = dart or DartClient()
 
@@ -526,40 +534,52 @@ class ProfilerNodes:
         ]
         company = state.get("company", "")
         remaining = MAX_SOURCES - len(sources)
+        snippets: list[str] = []
+        seen_snippet_urls: set[str] = set()
         if remaining > 0 and self.searcher.available and company != "(회사명 미상)":
             queries = [
-                f"{company} 기업 개요 사업 주요 제품",
-                f"{company} 재무 실적 매출 영업이익",
-                f"{company} 최근 뉴스 이슈 소송 규제",
+                (f"{company} 기업 개요 사업 주요 제품", "general"),
+                (f"{company} 재무 실적 매출 영업이익", "general"),
+                (f"{company} 최근 이슈 소송 규제", "news"),
             ]
             if state.get("focus"):
-                queries.insert(0, f"{company} {state['focus']}")
+                queries.insert(0, (f"{company} {state['focus']}", "general"))
             seen_domains = {urlparse(s["url"]).netloc for s in sources}
-            for query in queries:
-                if remaining <= 0:
-                    break
+            for query, topic in queries:
                 emit("searching", f"웹 검색: {query}")
                 try:
-                    hits = self.searcher.search(query, max_results=MAX_SEARCH_RESULTS)
+                    hits = self.searcher.search(
+                        query, max_results=MAX_SEARCH_RESULTS, topic=topic
+                    )
                 except Exception:
                     continue
                 for hit in hits:
+                    # 발췌는 추출 대상 여부와 무관하게 전부 증거로 모은다 (폭)
+                    if hit.snippet and hit.url not in seen_snippet_urls:
+                        seen_snippet_urls.add(hit.url)
+                        snippets.append(
+                            f"- {hit.title or '(제목 없음)'} [{hit.url}]\n"
+                            f"  {hit.snippet[:MAX_SNIPPET_CHARS]}"
+                        )
                     domain = urlparse(hit.url).netloc
-                    # 같은 도메인 반복 대신 자료원을 다양화한다
-                    if domain in seen_domains:
+                    # 같은 도메인 반복 대신 정독(추출) 자료원을 다양화한다
+                    if remaining <= 0 or domain in seen_domains:
                         continue
                     sources.append({"url": hit.url, "title": hit.title})
                     seen_domains.add(domain)
                     remaining -= 1
-                    if remaining <= 0:
-                        break
-        if not sources:
-            if state.get("dart_evidence"):
-                emit("gathering", "웹 자료 없음 — DART 공시만으로 진행")
-                return {"sources": [], "error": None}
+        snippets_text = "\n".join(snippets)[:MAX_SNIPPETS_TOTAL_CHARS]
+        if not sources and not snippets_text and not state.get("dart_evidence"):
             return {"error": NO_SOURCE_MESSAGE}
-        emit("gathering", f"조사 자료 {len(sources)}건 확정")
-        return {"sources": sources, "error": None}
+        if not sources:
+            emit("gathering", "정독할 웹 자료 없음 — 공시·검색 발췌로 진행")
+            return {"sources": [], "search_snippets": snippets_text, "error": None}
+        emit(
+            "gathering",
+            f"조사 자료 {len(sources)}건 확정"
+            + (f" (검색 발췌 {len(snippets)}건)" if snippets else ""),
+        )
+        return {"sources": sources, "search_snippets": snippets_text, "error": None}
 
     def route_gather(self, state: ProfilerState) -> Literal["extract", "analyze", "fail"]:
         if state.get("error"):
@@ -618,6 +638,11 @@ class ProfilerNodes:
         if state.get("dart_evidence"):
             parts.append(
                 f"[자료 0: 금융감독원 DART 전자공시 (공식 원천)]\n{state['dart_evidence']}"
+            )
+        if state.get("search_snippets"):
+            parts.append(
+                "[검색 결과 발췌 — 정독하지 않은 자료의 요약(폭 보완), "
+                f"출처 URL 병기]\n{state['search_snippets']}"
             )
         parts += [
             f"[자료 {i}: {e['url']}]\n{e['text']}"

@@ -26,6 +26,7 @@ from agent.tools.documents import DOCUMENT_TOOLS
 from agent.tools.excel import EXCEL_TOOLS
 from agent.tools.table import TABLE_TOOLS
 from agent.web_extract import make_web_extract_tool
+from agent.web_search import make_web_search_tool
 
 load_dotenv()
 
@@ -114,11 +115,15 @@ async def graph(config: RunnableConfig):
     """요청 config를 받아 에이전트를 조립하는 팩토리 (langgraph 서버가 호출)."""
     model_spec = (config.get("configurable") or {}).get("model", DEFAULT_MODEL)
     model = resolve_model(model_spec)
+    web_tools = [make_web_extract_tool(model)]
+    search_tool = make_web_search_tool()  # 검색 키 없으면 None — 도구 미등록
+    if search_tool is not None:
+        web_tools.append(search_tool)
     tools = (
         EXCEL_TOOLS
         + TABLE_TOOLS
         + DOCUMENT_TOOLS
-        + [make_web_extract_tool(model)]
+        + web_tools
         + list(await get_standards_tools())
     )
     return create_agent(

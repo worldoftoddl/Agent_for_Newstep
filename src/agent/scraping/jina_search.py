@@ -32,7 +32,10 @@ class JinaSearcher:
     def available(self) -> bool:
         return bool(self.api_key)
 
-    def search(self, query: str, max_results: int = 5) -> list[SearchHit]:
+    def search(
+        self, query: str, max_results: int = 5, topic: str = "general"
+    ) -> list[SearchHit]:
+        # topic은 검색 제공자 공통 시그니처용 — Jina는 구분이 없어 무시한다
         if not self.available:
             raise ValueError("JINA_API_KEY is required for web search")
         headers = {
