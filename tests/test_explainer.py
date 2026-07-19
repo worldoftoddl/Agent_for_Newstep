@@ -99,7 +99,7 @@ def test_render_brief_sections_and_citation(explain_dir):
     brief.performed_procedures[0].citation = "감사기준서 501 문단 A1"
     brief.performed_procedures[0].citation_cid = "KSA::501::A1"
     out = _render_brief(FILE, brief, [SHEET], [])
-    for section in ("① 이 조서는 무엇인가", "② 시트 구성", "③ 수행된 절차 해설",
+    for section in ("① 이 조서는 무엇인가", "② 시트 구성", "③ 절차 해설",
                     "④ 조서 읽는 법", "⑤ 미완·후속 확인 항목", "⑥ 용어 풀이",
                     "⑦ 한눈 요약", "점검 범위", "근거 목록"):
         assert section in out

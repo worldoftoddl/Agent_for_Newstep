@@ -213,7 +213,7 @@ def _render_brief(
         "## ② 시트 구성",
         *_bullets(brief.sheet_roles),
         "",
-        "## ③ 수행된 절차 해설",
+        "## ③ 절차 해설",
     ]
     if brief.performed_procedures:
         # 하위 불릿 구조 — 마크다운이 연속 줄을 한 문단으로 접는 것을 막는다
