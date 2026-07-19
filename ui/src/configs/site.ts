@@ -38,8 +38,7 @@ export const siteConfig = {
 } as const;
 
 /** 프로젝트 저장소 — 헤더 GitHub 버튼이 가리키는 곳 */
-export const REPO_URL =
-  "https://github.com/worldoftoddl/ExcelBrief_for_Newsteps";
+export const REPO_URL = "https://github.com/worldoftoddl/Agent_for_Newstep";
 
 /** 첫 화면 예시 질문 — 데모 조서(가상)와 한공회 공식 서식 기준 */
 export const CHAT_STARTERS = [

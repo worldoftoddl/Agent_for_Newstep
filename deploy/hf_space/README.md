@@ -1,5 +1,5 @@
 ---
-title: ExcelBrief for Newsteps
+title: Agent for Newstep
 emoji: 📊
 colorFrom: green
 colorTo: blue
@@ -8,12 +8,12 @@ app_port: 7860
 pinned: false
 ---
 
-# ExcelBrief for Newsteps
+# Agent for Newstep
 
 회계법인 신입(뉴스텝) 회계사를 위한 감사조서 Excel 해설 에이전트.
 조서를 읽고 한국 회계감사기준·K-IFRS·회계감사실무지침에 근거해
 수행된 감사절차를 해석하고, 미완성 조서에는 추가 필요 절차를 제안한다.
-코드·문서는 [GitHub 저장소](https://github.com/worldoftoddl/ExcelBrief_for_Newsteps) 참조.
+코드·문서는 [GitHub 저장소](https://github.com/worldoftoddl/Agent_for_Newstep) 참조.
 
 이 Space는 위 저장소를 빌드 시 clone해 langgraph 서버(내부 :2024)와
 Next.js 채팅 UI(:7860)를 한 컨테이너에서 실행한다. 브라우저는 Space

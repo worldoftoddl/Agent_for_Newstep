@@ -1,11 +1,11 @@
-# ExcelBrief for Newsteps — HF Space용 Dockerfile (GitHub 리포를 빌드 시 clone)
+# Agent for Newstep — HF Space용 Dockerfile (GitHub 리포를 빌드 시 clone)
 #
 # 리포 루트의 Dockerfile과 동일한 2-스테이지 구성에, 소스를 COPY 대신
 # GitHub clone으로 가져오는 src 스테이지만 추가한 변형이다.
 # 코드가 갱신되면 Space Settings → Factory rebuild로 다시 clone된다.
 
 FROM alpine/git AS src
-RUN git clone --depth 1 https://github.com/worldoftoddl/ExcelBrief_for_Newsteps.git /src
+RUN git clone --depth 1 https://github.com/worldoftoddl/Agent_for_Newstep.git /src
 
 # ── UI 빌드 ──────────────────────────────────────────────────────────────
 FROM node:24-slim AS ui-builder
