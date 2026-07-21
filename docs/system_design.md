@@ -109,7 +109,7 @@ create_agent(model=model, tools=tools, system_prompt=SYSTEM_PROMPT,
 
 | 라우트 키 (`configurable.model`) | 해석 |
 |---|---|
-| `anthropic:<model-id>` (기본) | Anthropic API. output_version=v1·프롬프트 캐싱(cache_control). 기본 `claude-sonnet-5` |
+| `anthropic:<model-id>` (기본) | Anthropic API. output_version=v1·프롬프트 캐싱(cache_control). 기본 `claude-haiku-4-5-20251001` |
 | `openai:<model-id>` | OpenAI API |
 | `google_genai:<model-id>` | Gemini (GOOGLE_API_KEY 또는 GEMINI_API_KEY) |
 | `hf:<org/model>` | HF Inference Providers 라우터 (OpenAI 호환, HF_INFERENCE_TOKEN) |

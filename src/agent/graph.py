@@ -30,7 +30,7 @@ from agent.web_search import make_web_search_tool
 
 load_dotenv()
 
-DEFAULT_MODEL = "anthropic:claude-sonnet-5"
+DEFAULT_MODEL = "anthropic:claude-haiku-4-5-20251001"
 
 
 # max_tokens 8192: 기본 4096이면 조서 해설이 근거 목록 전에 절단됨 (Phase 5 채점에서 실증).

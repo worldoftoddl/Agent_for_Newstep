@@ -19,13 +19,13 @@ export interface RegisteredModel extends ModelOption {
 export const MODEL_REGISTRY: RegisteredModel[] = [
   {
     spec: "anthropic:claude-sonnet-5",
-    label: "Claude Sonnet 5 (기본)",
+    label: "Claude Sonnet 5 (고품질)",
     provider: "Anthropic",
     envKeys: ["ANTHROPIC_API_KEY"],
   },
   {
     spec: "anthropic:claude-haiku-4-5-20251001",
-    label: "Claude Haiku 4.5 (빠름)",
+    label: "Claude Haiku 4.5 (기본·빠름)",
     provider: "Anthropic",
     envKeys: ["ANTHROPIC_API_KEY"],
   },
@@ -75,7 +75,7 @@ export const MODEL_REGISTRY: RegisteredModel[] = [
   },
 ];
 
-export const DEFAULT_MODEL_SPEC = "anthropic:claude-sonnet-5";
+export const DEFAULT_MODEL_SPEC = "anthropic:claude-haiku-4-5-20251001";
 
 export const MODEL_STORAGE_KEY = "excelbrief:model";
 
