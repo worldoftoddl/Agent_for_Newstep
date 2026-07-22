@@ -472,18 +472,24 @@ class ProfilerNodes:
         question = state.get("question", "")
         provided_urls = list(dict.fromkeys(_URL_RE.findall(question)))[:MAX_SOURCES]
         company, focus = "", ""
+        # 후속 요청("주석도 확인해줘")은 회사명을 생략한다 — triage·chat처럼
+        # 대화 맥락을 함께 줘야 이어지는 회사를 판별할 수 있다.
+        context = conversation_context(state)
+        context_part = f"이전 대화:\n{context}\n\n" if context else ""
         try:
             planner = structured(self.model, ProfilePlan)
             result = planner.invoke(
                 [
                     SystemMessage(
                         content=(
-                            "사용자 메시지에서 조사 대상 회사명과 특별히 궁금해하는 "
-                            "초점을 추출하세요. 회사명을 식별할 수 없으면 빈 "
-                            "문자열로 두세요. URL은 추출하지 마세요."
+                            "현재 요청에서 조사 대상 회사명과 특별히 궁금해하는 "
+                            "초점을 추출하세요. 현재 요청에 회사명이 없지만 이전 "
+                            "대화가 특정 회사에 대한 조사의 연속이면 그 회사명을 "
+                            "쓰세요. 어느 쪽에서도 식별할 수 없으면 빈 문자열로 "
+                            "두세요. URL은 추출하지 마세요."
                         )
                     ),
-                    HumanMessage(content=question),
+                    HumanMessage(content=f"{context_part}현재 요청: {question}"),
                 ]
             )
             plan = (
