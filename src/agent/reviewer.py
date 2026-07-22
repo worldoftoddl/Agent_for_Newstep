@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated, TypedDict
 
 from agent.evidence import MAX_SHEETS, collect_workpaper_evidence
-from agent.graph import DEFAULT_MODEL, resolve_model
+from agent.graph import DEFAULT_MODEL, resolve_model, structured
 from agent.graph_common import (
     conversation_context,
     emit,
@@ -294,7 +294,7 @@ class ReviewerNodes:
         context = conversation_context(state)
         context_part = f"이전 대화:\n{context}\n" if context else ""
         try:
-            decider = self.model.with_structured_output(TriageDecision)
+            decider = structured(self.model, TriageDecision)
             result = decider.invoke(
                 [
                     SystemMessage(
@@ -525,7 +525,7 @@ class ReviewerNodes:
     def assess(self, state: ReviewerState) -> dict[str, Any]:
         attempt = state.get("attempts", 0) + 1
         emit("assessing", "수집된 증거로 완성도를 평가하는 중", attempt=attempt)
-        assessor = self.model.with_structured_output(ReviewFindings)
+        assessor = structured(self.model, ReviewFindings)
         try:
             result = assessor.invoke(
                 [

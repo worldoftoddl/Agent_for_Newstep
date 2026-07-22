@@ -39,7 +39,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated, TypedDict
 
 from agent.dart_client import DartClient
-from agent.graph import DEFAULT_MODEL, resolve_model
+from agent.graph import DEFAULT_MODEL, resolve_model, structured
 from agent.graph_common import conversation_context, emit, human_texts_newest_first
 from agent.mcp_client import get_standards_tools
 from agent.scraping import JinaSearcher, ScraperConfig, TavilySearcher
@@ -353,7 +353,7 @@ class ProfilerNodes:
         context = conversation_context(state)
         context_part = f"이전 대화:\n{context}\n" if context else ""
         try:
-            decider = self.model.with_structured_output(TriageDecision)
+            decider = structured(self.model, TriageDecision)
             result = decider.invoke(
                 [
                     SystemMessage(
@@ -473,7 +473,7 @@ class ProfilerNodes:
         provided_urls = list(dict.fromkeys(_URL_RE.findall(question)))[:MAX_SOURCES]
         company, focus = "", ""
         try:
-            planner = self.model.with_structured_output(ProfilePlan)
+            planner = structured(self.model, ProfilePlan)
             result = planner.invoke(
                 [
                     SystemMessage(
@@ -698,7 +698,7 @@ class ProfilerNodes:
             for i, e in enumerate(state.get("extracts") or [], start=1)
         ]
         evidence = "\n\n".join(parts)
-        analyzer = self.model.with_structured_output(CompanyProfile)
+        analyzer = structured(self.model, CompanyProfile)
         # 교정 재시도: 같은 입력을 반복하면 같은 실패가 나온다 — 직전 오류를 명시
         retry_note = (
             (

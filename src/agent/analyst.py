@@ -31,7 +31,7 @@ from openpyxl.utils.cell import range_boundaries
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated, TypedDict
 
-from agent.graph import DEFAULT_MODEL, resolve_model
+from agent.graph import DEFAULT_MODEL, resolve_model, structured
 from agent.graph_common import (
     conversation_context as _conversation_context,
     emit as _emit,
@@ -167,7 +167,7 @@ class AnalystNodes:
         context = _conversation_context(state)
         context_part = f"이전 대화:\n{context}\n" if context else ""
         try:
-            decider = self.model.with_structured_output(TriageDecision)
+            decider = structured(self.model, TriageDecision)
             result = decider.invoke(
                 [
                     SystemMessage(
@@ -309,7 +309,7 @@ class AnalystNodes:
         return update
 
     def _generate_sql(self, state: AnalystState, instruction: str) -> dict[str, Any]:
-        planner = self.model.with_structured_output(SQLPlan)
+        planner = structured(self.model, SQLPlan)
         context = _conversation_context(state)
         context_part = (
             f"Recent conversation (for follow-up questions):\n{context}\n"

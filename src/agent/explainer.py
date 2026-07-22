@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated, TypedDict
 
 from agent.evidence import MAX_SHEETS, collect_workpaper_evidence
-from agent.graph import DEFAULT_MODEL, resolve_model
+from agent.graph import DEFAULT_MODEL, resolve_model, structured
 from agent.graph_common import (
     conversation_context,
     emit,
@@ -300,7 +300,7 @@ class ExplainerNodes:
         context = conversation_context(state)
         context_part = f"이전 대화:\n{context}\n" if context else ""
         try:
-            decider = self.model.with_structured_output(TriageDecision)
+            decider = structured(self.model, TriageDecision)
             result = decider.invoke(
                 [
                     SystemMessage(
@@ -520,7 +520,7 @@ class ExplainerNodes:
     def explain(self, state: ExplainerState) -> dict[str, Any]:
         attempt = state.get("attempts", 0) + 1
         emit("explaining", "수집된 증거로 조서를 해설하는 중", attempt=attempt)
-        explainer_model = self.model.with_structured_output(WorkpaperBrief)
+        explainer_model = structured(self.model, WorkpaperBrief)
         try:
             result = explainer_model.invoke(
                 [

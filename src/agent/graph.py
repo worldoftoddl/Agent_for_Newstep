@@ -82,6 +82,22 @@ def resolve_model(spec: str):
     return init_chat_model(spec, max_tokens=MAX_TOKENS)
 
 
+def structured(model, schema):
+    """구조화 출력 래퍼 — 고정 그래프 전 노드가 이 함수를 거친다.
+
+    Anthropic은 전용 구조화 출력(method="json_schema", 제약 디코딩)으로
+    Literal/enum까지 생성 시점에 강제한다 — 기본 function_calling 방식에서는
+    enum 이탈('감사기준서' 등)이 사후 검증 실패 → LLM 호출 통째 재시도로
+    이어졌다 (실측: explainer 50초 낭비). 다른 벤더는 제약 디코딩 지원이
+    제각각이라 기존 function_calling + 사후 검증·재시도 경로를 유지한다.
+    """
+    from langchain_anthropic import ChatAnthropic
+
+    if isinstance(model, ChatAnthropic):
+        return model.with_structured_output(schema, method="json_schema")
+    return model.with_structured_output(schema)
+
+
 # 요약 후 남기는 최근 이력 — AI/Tool 메시지 쌍은 미들웨어가 안 깨지게 보존한다
 SUMMARY_KEEP = ("messages", 20)
 
