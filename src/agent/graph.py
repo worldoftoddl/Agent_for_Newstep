@@ -98,31 +98,6 @@ def structured(model, schema):
     return model.with_structured_output(schema)
 
 
-def structured_raw(model, schema):
-    """제약 디코딩(json_schema)이 걸린 원시 모델 — JSON 텍스트 스트림용.
-
-    structured()의 파서 러너블은 스키마 검증을 통과한 뒤에야 청크를 내주므로
-    (실측: 생성 종료 직전 3개), 생성 과정 미리보기에는 쓸 수 없다. 이 원시
-    모델의 .astream()은 JSON 텍스트가 토큰 단위로 흐른다 — 호출부가 partial
-    파싱해 미리보기를 만들고, 완료 후 json.loads로 최종 검증할 것.
-    Anthropic이 아니거나 내부 변환 헬퍼가 없으면(버전 변동) None — 호출부는
-    structured().ainvoke()로 폴백한다.
-    """
-    from langchain_anthropic import ChatAnthropic
-
-    if not isinstance(model, ChatAnthropic):
-        return None
-    try:
-        from langchain_anthropic.chat_models import (
-            _convert_to_anthropic_output_config_format,
-        )
-    except ImportError:
-        return None
-    return model.bind(
-        output_config={"format": _convert_to_anthropic_output_config_format(schema)}
-    )
-
-
 # 요약 후 남기는 최근 이력 — AI/Tool 메시지 쌍은 미들웨어가 안 깨지게 보존한다
 SUMMARY_KEEP = ("messages", 20)
 

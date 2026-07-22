@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { LoaderCircle } from "lucide-react";
 import type { HierarchicalTask } from "@/types/task-hierarchy";
@@ -8,7 +7,6 @@ import type { TaskProgressItem, ActivityItem } from "@/types/task-progress";
 import { TodoProgressList } from "./streaming/TodoProgressList";
 import { ActivityStream } from "./streaming/ActivityStream";
 import { ActiveTasksList } from "./streaming/ActiveTask";
-import { MarkdownText } from "./content/MarkdownText";
 import { cn } from "@/lib/utils";
 
 interface StreamingTaskViewProps {
@@ -38,19 +36,6 @@ export function StreamingTaskView({
   activityItems,
 }: StreamingTaskViewProps) {
   const hasActivityItems = activityItems && activityItems.length > 0;
-
-  // 그래프 진행 이벤트가 실어 보낸 답변 미리보기 (생성 중인 해설 등) —
-  // 스트리밍 동안만 표시하고, 최종 메시지가 렌더되면(스트림 종료) 숨긴다
-  const previewMarkdown = useMemo(() => {
-    if (!isStreaming || !activityItems) return null;
-    for (let i = activityItems.length - 1; i >= 0; i--) {
-      const item = activityItems[i];
-      if (item.kind !== "progress") continue;
-      const preview = item.details?.preview;
-      if (typeof preview === "string" && preview.length > 0) return preview;
-    }
-    return null;
-  }, [isStreaming, activityItems]);
 
   // Check if there's any actual content to display
   const hasContent =
@@ -108,21 +93,6 @@ export function StreamingTaskView({
           tasks={activeLeafTasks}
           isStreaming={isStreaming}
         />
-      )}
-
-      {/* 생성 중인 답변 미리보기 (progress 이벤트의 preview) */}
-      {previewMarkdown && (
-        <div className="border-border/50 bg-card/50 rounded-lg border p-4">
-          <div className="text-muted-foreground mb-2 flex items-center gap-2 text-xs">
-            <LoaderCircle className="h-3 w-3 animate-spin text-blue-500" />
-            <span>
-              답변 생성 중 — 미리보기 (완성본은 근거 확정 후 표시됩니다)
-            </span>
-          </div>
-          <div className="opacity-80">
-            <MarkdownText>{previewMarkdown}</MarkdownText>
-          </div>
-        </div>
       )}
     </motion.div>
   );
