@@ -15,6 +15,8 @@ reviewer(완성도 점검)와 골격은 같지만 산출물이 다르다 — 무
 """
 
 import asyncio
+import json
+import time
 from typing import Any, Literal
 
 from langchain_core.messages import (
@@ -24,19 +26,21 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
+from langchain_core.utils.json import parse_partial_json
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import Annotated, TypedDict
 
 from agent.evidence import MAX_SHEETS, collect_workpaper_evidence
-from agent.graph import DEFAULT_MODEL, resolve_model, structured
+from agent.graph import DEFAULT_MODEL, resolve_model, structured, structured_raw
 from agent.graph_common import (
     conversation_context,
     emit,
     find_target_file,
     human_texts_newest_first,
     missing_file_message,
+    msg_text,
 )
 from agent.mcp_client import get_standards_tools
 from agent.standards_lookup import resolve_citation, tool_text
@@ -50,6 +54,8 @@ from agent.tools.excel import (
 )
 
 MAX_EXPLAIN_ATTEMPTS = 2
+# 해설 생성 미리보기 emit 최소 간격(초) — SSE 부하와 실시간감의 균형
+PREVIEW_INTERVAL = 1.0
 
 # investigate 미니 ReAct의 상한 (reviewer와 동일 패턴)
 MAX_INVESTIGATE_ROUNDS = 3
@@ -193,6 +199,60 @@ class ExplainerState(TypedDict, total=False):
     brief: dict
     attempts: int
     error: str | None
+
+
+def _preview_brief(partial_json: str) -> WorkpaperBrief | None:
+    """스트리밍 중간의 잘린 JSON을 미리보기용 브리프로 관대하게 변환한다.
+
+    필수 필드가 아직 없을 수 있어 검증(model_validate) 대신 빈 값을 채운
+    model_construct를 쓴다 — 표시 전용이며 그래프 상태에는 저장하지 않는다.
+    """
+    try:
+        data = parse_partial_json(partial_json)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    def _s(value: Any) -> str:
+        return value if isinstance(value, str) else ""
+
+    def _sl(value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [v for v in value if isinstance(v, str)]
+
+    procedures = [
+        ProcedureNote.model_construct(
+            procedure=_s(p.get("procedure")),
+            location=_s(p.get("location")),
+            interpretation=_s(p.get("interpretation")),
+            assertion=_s(p.get("assertion")),
+            risk_addressed=_s(p.get("risk_addressed")),
+            standards_query=_s(p.get("standards_query")),
+            source_hint=_s(p.get("source_hint")),
+            citation="",
+            citation_cid="",
+        )
+        for p in (data.get("performed_procedures") or [])
+        if isinstance(p, dict) and _s(p.get("procedure"))
+    ]
+    terms = [
+        TermNote.model_construct(
+            term=_s(t.get("term")), explanation=_s(t.get("explanation"))
+        )
+        for t in (data.get("terms") or [])
+        if isinstance(t, dict) and _s(t.get("term"))
+    ]
+    return WorkpaperBrief.model_construct(
+        workpaper_purpose=_s(data.get("workpaper_purpose")),
+        sheet_roles=_sl(data.get("sheet_roles")),
+        performed_procedures=procedures,
+        reading_tips=_sl(data.get("reading_tips")),
+        open_items=_sl(data.get("open_items")),
+        terms=terms,
+        overall=_s(data.get("overall")),
+    )
 
 
 def _render_brief(
@@ -517,50 +577,71 @@ class ExplainerNodes:
         extra = "\n\n".join(extra_parts)[:MAX_EXTRA_EVIDENCE_CHARS]
         return {"extra_evidence": extra}
 
-    def explain(self, state: ExplainerState) -> dict[str, Any]:
+    async def explain(self, state: ExplainerState) -> dict[str, Any]:
         attempt = state.get("attempts", 0) + 1
         emit("explaining", "수집된 증거로 조서를 해설하는 중", attempt=attempt)
         explainer_model = structured(self.model, WorkpaperBrief)
         try:
-            result = explainer_model.invoke(
-                [
-                    SystemMessage(
-                        content=(
-                            "당신은 회계법인의 시니어로서 신입에게 감사조서를 "
-                            "설명합니다. 제공된 기계 수집 증거(워크북 구조·수식 "
-                            "지도·주석·서명란 스캔)와 추가 조사 결과만 사용해 "
-                            "조서를 해설하세요. 증거에 없는 내용을 추정하지 마세요. "
-                            "근거 위치는 셀 좌표만 나열하면 신입이 알아듣지 "
-                            "못합니다 — '어느 시트의 무엇(셀주소)'처럼 그 위치가 "
-                            "무엇인지 설명하고 좌표는 괄호로 붙이세요. 빈 서식이면 "
-                            "각 칸에 무엇을 채워야 하는지를 해설하세요. 해설의 "
-                            "관점: 각 절차를 '경영진 주장 → 위험 → 절차 → 증거' "
-                            "사슬로 설명하세요 — assertion에 절차가 다루는 주장을, "
-                            "risk_addressed에 이 절차가 없으면 무엇이 잘못될 수 "
-                            "있는지를 채우고, interpretation은 그 주장·위험과 "
-                            "연결해 서술하세요. 관찰 나열('B5에 합계가 있다')이 "
-                            "아니라 목적 설명('매출채권의 실재성을 확인하기 위해 "
-                            "…')이 되어야 합니다. 분량을 지키세요 — assertion은 "
-                            "주장 명칭만, risk_addressed는 한 문장, interpretation은 "
-                            "두세 문장. 길게 쓰면 보고서가 읽히지 않습니다. 기준서 "
-                            "번호를 본문에 직접 인용하지 말고, 근거가 필요한 "
-                            "절차에는 standards_query(한국어 검색어)와 source_hint를 "
-                            "채우세요 — 원문 확인과 인용 확정은 시스템이 수행합니다."
+            messages = [
+                SystemMessage(
+                    content=(
+                        "당신은 회계법인의 시니어로서 신입에게 감사조서를 "
+                        "설명합니다. 제공된 기계 수집 증거(워크북 구조·수식 "
+                        "지도·주석·서명란 스캔)와 추가 조사 결과만 사용해 "
+                        "조서를 해설하세요. 증거에 없는 내용을 추정하지 마세요. "
+                        "근거 위치는 셀 좌표만 나열하면 신입이 알아듣지 "
+                        "못합니다 — '어느 시트의 무엇(셀주소)'처럼 그 위치가 "
+                        "무엇인지 설명하고 좌표는 괄호로 붙이세요. 빈 서식이면 "
+                        "각 칸에 무엇을 채워야 하는지를 해설하세요. 해설의 "
+                        "관점: 각 절차를 '경영진 주장 → 위험 → 절차 → 증거' "
+                        "사슬로 설명하세요 — assertion에 절차가 다루는 주장을, "
+                        "risk_addressed에 이 절차가 없으면 무엇이 잘못될 수 "
+                        "있는지를 채우고, interpretation은 그 주장·위험과 "
+                        "연결해 서술하세요. 관찰 나열('B5에 합계가 있다')이 "
+                        "아니라 목적 설명('매출채권의 실재성을 확인하기 위해 "
+                        "…')이 되어야 합니다. 분량을 지키세요 — assertion은 "
+                        "주장 명칭만, risk_addressed는 한 문장, interpretation은 "
+                        "두세 문장. 길게 쓰면 보고서가 읽히지 않습니다. 기준서 "
+                        "번호를 본문에 직접 인용하지 말고, 근거가 필요한 "
+                        "절차에는 standards_query(한국어 검색어)와 source_hint를 "
+                        "채우세요 — 원문 확인과 인용 확정은 시스템이 수행합니다."
+                    )
+                ),
+                HumanMessage(
+                    content=(
+                        f"해설 요청: {state.get('question', '이 조서를 해설해줘')}\n"
+                        f"대상 파일: {state['path']}\n\n[수집 증거]\n{state['evidence']}"
+                        + (
+                            f"\n\n[추가 조사]\n{state['extra_evidence']}"
+                            if state.get("extra_evidence")
+                            else ""
                         )
-                    ),
-                    HumanMessage(
-                        content=(
-                            f"해설 요청: {state.get('question', '이 조서를 해설해줘')}\n"
-                            f"대상 파일: {state['path']}\n\n[수집 증거]\n{state['evidence']}"
-                            + (
-                                f"\n\n[추가 조사]\n{state['extra_evidence']}"
-                                if state.get("extra_evidence")
-                                else ""
-                            )
+                    )
+                ),
+            ]
+            raw_model = structured_raw(self.model, WorkpaperBrief)
+            if raw_model is not None:
+                # 제약 디코딩이 걸린 원시 JSON 스트림을 직접 받아, 완성돼 가는
+                # 해설을 미리보기(preview)로 emit — 긴 생성 구간의 침묵 해소
+                buf = ""
+                last_emit = 0.0
+                async for chunk in raw_model.astream(messages):
+                    buf += msg_text(chunk)
+                    now = time.monotonic()
+                    if now - last_emit < PREVIEW_INTERVAL:
+                        continue
+                    last_emit = now
+                    pb = _preview_brief(buf)
+                    if pb is not None:
+                        emit(
+                            "explaining",
+                            "수집된 증거로 조서를 해설하는 중",
+                            attempt=attempt,
+                            preview=_render_brief(state["path"], pb),
                         )
-                    ),
-                ]
-            )
+                result: Any = json.loads(buf)  # 완료 시점엔 완전한 JSON (제약 디코딩)
+            else:
+                result = await explainer_model.ainvoke(messages)
             brief = (
                 result
                 if isinstance(result, WorkpaperBrief)

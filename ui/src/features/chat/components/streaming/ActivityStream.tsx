@@ -669,7 +669,7 @@ const ProgressRow = memo(
     prev.item.id === next.item.id &&
     prev.item.status === next.item.status &&
     prev.item.message === next.item.message &&
-    JSON.stringify(prev.item.details) === JSON.stringify(next.item.details),
+    prev.item.timestamp === next.item.timestamp,
 );
 
 // ============================================
