@@ -72,17 +72,54 @@ export const MODEL_REGISTRY: RegisteredModel[] = [
     provider: "OpenAI",
     envKeys: ["OPENAI_API_KEY"],
   },
-  // HF Inference Providers 라우터 — 오픈모델 서버리스 (GPU Space 불필요)
+  // 오픈소스 — HF Inference Providers 라우터 서빙 (GPU Space 불필요).
+  // 라우터에 서빙 프로바이더가 있는 모델만 등록 가능 (한국 오픈소스는 미서빙이라 제외).
+  {
+    spec: "hf:deepseek-ai/DeepSeek-R1-0528",
+    label: "DeepSeek R1",
+    provider: "프론티어 오픈소스",
+    envKeys: ["HF_INFERENCE_TOKEN"],
+  },
+  {
+    spec: "hf:moonshotai/Kimi-K2.6",
+    label: "Kimi K2.6",
+    provider: "프론티어 오픈소스",
+    envKeys: ["HF_INFERENCE_TOKEN"],
+  },
+  {
+    spec: "hf:nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+    label: "Nemotron 3 Ultra",
+    provider: "프론티어 오픈소스",
+    envKeys: ["HF_INFERENCE_TOKEN"],
+  },
+  {
+    spec: "hf:zai-org/GLM-4.7",
+    label: "GLM 4.7",
+    provider: "프론티어 오픈소스",
+    envKeys: ["HF_INFERENCE_TOKEN"],
+  },
   {
     spec: "hf:Qwen/Qwen3.6-27B",
     label: "Qwen3.6 27B",
-    provider: "HuggingFace",
+    provider: "미들급 오픈소스",
     envKeys: ["HF_INFERENCE_TOKEN"],
   },
   {
     spec: "hf:openai/gpt-oss-120b",
     label: "gpt-oss 120B",
-    provider: "HuggingFace",
+    provider: "미들급 오픈소스",
+    envKeys: ["HF_INFERENCE_TOKEN"],
+  },
+  {
+    spec: "hf:google/gemma-3-27b-it",
+    label: "Gemma 3 27B",
+    provider: "미들급 오픈소스",
+    envKeys: ["HF_INFERENCE_TOKEN"],
+  },
+  {
+    spec: "hf:CohereLabs/c4ai-command-a-03-2025",
+    label: "Command A",
+    provider: "미들급 오픈소스",
     envKeys: ["HF_INFERENCE_TOKEN"],
   },
   {
