@@ -66,7 +66,6 @@ export const AssistantConfigProvider: React.FC<{
   children,
   assistantId: initialAssistantId,
   initialData,
-  enableGraphSelection = true,
   defaultGraphId = "",
 }) => {
   // Use Server Action transition for non-blocking updates
@@ -202,29 +201,32 @@ export const AssistantConfigProvider: React.FC<{
     }
   }, [initialData?.assistants]);
 
-  // Auto-select assistant if no valid selection exists
+  // Auto-select assistant if no valid selection exists.
+  // 선택된 assistant가 목록에 없는 경우(숨긴 그래프가 쿠키에 남은 이전 선택 등)도
+  // 무효로 보고 기본 그래프로 재선택한다.
   const autoSelectTriggeredRef = React.useRef(false);
   useEffect(() => {
+    const selectionInvalid =
+      !assistantId || !assistants.some((a) => a.assistant_id === assistantId);
     if (
-      !assistantId &&
+      selectionInvalid &&
       !isLoading &&
       assistants.length > 0 &&
       !autoSelectTriggeredRef.current
     ) {
       autoSelectTriggeredRef.current = true;
 
-      let targetAssistantId: string;
-
-      if (!enableGraphSelection && defaultGraphId) {
-        const defaultAssistant = assistants.find(
-          (a) =>
-            a.assistant_id === defaultGraphId || a.graph_id === defaultGraphId,
-        );
-        targetAssistantId =
-          defaultAssistant?.assistant_id || assistants[0].assistant_id;
-      } else {
-        targetAssistantId = assistants[0].assistant_id;
-      }
+      const preferredGraphId =
+        defaultGraphId || process.env.NEXT_PUBLIC_ASSISTANT_ID || "";
+      const defaultAssistant = preferredGraphId
+        ? assistants.find(
+            (a) =>
+              a.assistant_id === preferredGraphId ||
+              a.graph_id === preferredGraphId,
+          )
+        : undefined;
+      const targetAssistantId =
+        defaultAssistant?.assistant_id || assistants[0].assistant_id;
 
       // Import dynamically to avoid server-side issues
       // 전체 리로드 대신 router.refresh()로 서버 컴포넌트만 재실행한다
@@ -236,14 +238,7 @@ export const AssistantConfigProvider: React.FC<{
         });
       });
     }
-  }, [
-    assistantId,
-    isLoading,
-    assistants,
-    enableGraphSelection,
-    defaultGraphId,
-    router,
-  ]);
+  }, [assistantId, isLoading, assistants, defaultGraphId, router]);
 
   // Update config using Server Action
   const updateConfig = useCallback(
