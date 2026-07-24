@@ -18,14 +18,14 @@ export interface RegisteredModel extends ModelOption {
 
 export const MODEL_REGISTRY: RegisteredModel[] = [
   {
-    spec: "anthropic:claude-opus-4-5",
-    label: "Claude Opus 4.5",
+    spec: "anthropic:claude-opus-4-7",
+    label: "Claude Opus 4.7",
     provider: "Anthropic",
     envKeys: ["ANTHROPIC_API_KEY"],
   },
   {
-    spec: "anthropic:claude-sonnet-4-5",
-    label: "Claude Sonnet 4.5",
+    spec: "anthropic:claude-sonnet-4-6",
+    label: "Claude Sonnet 4.6",
     provider: "Anthropic",
     envKeys: ["ANTHROPIC_API_KEY"],
   },
