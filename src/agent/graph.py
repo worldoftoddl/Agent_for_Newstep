@@ -78,7 +78,12 @@ def resolve_model(spec: str):
             api_key=os.environ.get("GOOGLE_API_KEY")
             or os.environ.get("GEMINI_API_KEY"),
         )
-    # openai:<id> 등 — init_chat_model 표준 접두사에 위임
+    if spec.startswith("openai:"):
+        # GPT 5.6(reasoning) 계열은 chat completions에서 함수 도구를 거부함
+        # (400 실측: "use /v1/responses or set reasoning_effort to 'none'")
+        # → Responses API 사용. hf:/local:은 OpenAI 호환 서버라 이 분기를 타지 않는다.
+        return init_chat_model(spec, max_tokens=MAX_TOKENS, use_responses_api=True)
+    # 그 외 — init_chat_model 표준 접두사에 위임
     return init_chat_model(spec, max_tokens=MAX_TOKENS)
 
 
